@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+httpx
+faster-whisper
+av<19  # faster-whisper 1.2 passes an argument that av 19 removed
+piper-tts
+openwakeword
+psutil

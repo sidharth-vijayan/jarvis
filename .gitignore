@@ -1,0 +1,25 @@
+# Local environment and caches
+.venv/
+__pycache__/
+*.pyc
+.claude/
+
+# User data: conversations database, logs, browser profile, downloaded voices
+data/
+
+# Never commit secrets, databases, recordings or model weights
+.env
+.env.*
+*credentials*.json
+*token*.json
+*.db
+*.sqlite*
+*.log
+*.wav
+*.webm
+*.mp3
+*.onnx
+*.tflite
+*.gguf
+*.bin
+*.pt

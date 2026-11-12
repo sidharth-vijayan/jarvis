@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JARVIS</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23050a14'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%233cdcff' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%233cdcff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css?v=2">
+</head>
+<body data-view="orb">
+  <header id="topbar">
+    <nav aria-label="Screens">
+      <button class="chip" data-go="orb">Orb</button>
+      <button class="chip" data-go="home">Homescreen</button>
+      <button class="chip" data-go="graph">Graph</button>
+      <button class="chip" data-go="settings" id="open-settings">Settings</button>
+    </nav>
+    <div class="title">
+      <h1>J . A . R . V . I . S .</h1>
+      <p>Just a rather very intelligent system</p>
+    </div>
+    <div class="top-right">
+      <div id="status" data-state="idle" role="status"><span class="dot"></span><span id="status-text">Idle</span></div>
+      <label class="mode">Mode
+        <select id="mode">
+          <option value="fast">Fast</option>
+          <option value="balanced">Balanced</option>
+          <option value="advanced">Advanced</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <!-- Screen 1: the default view, and what you see while talking -->
+  <section id="view-orb" class="view">
+    <div class="col">
+      <div class="panel">
+        <h2>System</h2>
+        <div class="bar"><span>CPU</span><i data-stat="cpu"></i><b data-stat-text="cpu">--</b></div>
+        <div class="bar"><span>MEM</span><i data-stat="ram"></i><b data-stat-text="ram">--</b></div>
+        <div class="bar"><span>VRAM</span><i data-stat="vram"></i><b data-stat-text="vram">--</b></div>
+        <div class="bar"><span>PWR</span><i data-stat="battery"></i><b data-stat-text="battery">--</b></div>
+        <div class="clock" data-clock></div>
+        <div class="date" data-date></div>
+      </div>
+      <div class="panel">
+        <h2>AI Core</h2>
+        <dl class="facts" id="core-facts"></dl>
+      </div>
+      <div class="panel off">
+        <h2>Inbox</h2>
+        <p>Not connected</p>
+        <small>Arrives with the Gmail phase.</small>
+      </div>
+    </div>
+    <div class="center">
+      <canvas id="viz" width="760" height="760" aria-hidden="true"></canvas>
+      <p id="orb-status">Online</p>
+    </div>
+    <div class="col">
+      <div class="panel grow">
+        <h2>Transcript</h2>
+        <div id="messages" aria-live="polite"></div>
+        <p id="greeting" class="dim"></p>
+      </div>
+      <div class="panel term">
+        <div class="term-head"><span class="lights"><i></i><i></i><i></i></span>jarvis://activity<em>live</em></div>
+        <div id="activity" class="log"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Homescreen: only shown when asked for -->
+  <section id="view-home" class="view" hidden>
+    <div class="panel" style="grid-area: core">
+      <h2>AI Core overview</h2>
+      <div id="overview" class="rows"></div>
+    </div>
+    <div class="panel hero" style="grid-area: hero">
+      <canvas id="viz-home" width="520" height="520" aria-hidden="true"></canvas>
+      <div class="hero-text"><strong>J A R V I S</strong><span>AI core · fully local</span></div>
+    </div>
+    <div class="panel" style="grid-area: feed">
+      <h2>Live feed</h2>
+      <div id="feed" class="log"></div>
+    </div>
+    <div class="panel" style="grid-area: convs">
+      <h2>Conversations <button id="new-chat" class="chip">+ New</button></h2>
+      <div id="conversations"></div>
+    </div>
+    <div class="panel" style="grid-area: quick">
+      <h2>Quick commands</h2>
+      <div class="rows">
+        <button class="row-btn" data-go="orb">Back to the orb</button>
+        <button class="row-btn" id="quick-talk">Talk to JARVIS</button>
+        <button class="row-btn" data-go="graph">Open the graph</button>
+        <button class="row-btn" data-go="settings">Settings</button>
+      </div>
+    </div>
+    <div class="panel" style="grid-area: monitor">
+      <h2>System monitor</h2>
+      <div class="rings">
+        <div class="ring" data-ring="cpu"><b>--</b><span>CPU</span></div>
+        <div class="ring" data-ring="ram"><b>--</b><span>RAM</span></div>
+        <div class="ring" data-ring="disk"><b>--</b><span>Disk</span></div>
+        <div class="ring" data-ring="vram"><b>--</b><span>VRAM</span></div>
+        <div class="ring" data-ring="battery"><b>--</b><span>Battery</span></div>
+      </div>
+    </div>
+    <div class="panel" style="grid-area: llm">
+      <h2>LLM status</h2>
+      <div id="llm" class="rows"></div>
+    </div>
+    <div class="panel off" style="grid-area: later">
+      <h2>Not connected yet</h2>
+      <div class="rows">
+        <div class="row"><span>Desktop control, WhatsApp</span><em>Phase 3</em></div>
+        <div class="row"><span>Inbox</span><em>Gmail phase</em></div>
+        <div class="row"><span>Memory</span><em>Phase 4</em></div>
+        <div class="row"><span>Calendar, tasks</span><em>Phase 5</em></div>
+        <div class="row"><span>Briefings, reminders</span><em>Phase 7</em></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Screen 2: the graph, opened from the homescreen or by asking -->
+  <section id="view-graph" class="view" hidden>
+    <div id="graph"></div>
+    <aside class="panel graph-left">
+      <h2>Knowledge graph</h2>
+      <p class="dim" id="graph-count"></p>
+      <input id="graph-search" type="search" placeholder="Search the graph..." aria-label="Search the graph">
+      <h2>Inspector</h2>
+      <div id="inspector" class="dim">Click a node to see what it is and what it connects to.</div>
+      <h2>Top hubs</h2>
+      <div id="hubs" class="rows"></div>
+    </aside>
+    <aside class="panel graph-right">
+      <h2>Filter</h2>
+      <div id="legend" class="rows"></div>
+    </aside>
+  </section>
+
+  <section id="view-settings" class="view" hidden>
+    <div class="panel settings">
+      <h2>Models</h2>
+      <p id="ollama-status"></p>
+      <div class="setting">
+        <label for="model_fast">Fast</label>
+        <select id="model_fast"></select>
+        <small>Answers straight away, no reasoning step. Best for everyday requests.</small>
+      </div>
+      <div class="setting">
+        <label for="model_balanced">Balanced</label>
+        <select id="model_balanced"></select>
+        <small>Reasons before answering. Slower, better on trickier questions.</small>
+      </div>
+      <div class="setting">
+        <label for="model_advanced">Advanced</label>
+        <select id="model_advanced"></select>
+        <small>Reasons before answering, meant for the larger model. Slowest.</small>
+      </div>
+    </div>
+    <div class="panel settings">
+      <h2>Voice</h2>
+      <p id="voice-missing" class="bad" hidden>No voices are installed in data/voices, so replies cannot be spoken.</p>
+      <div class="setting">
+        <label><input id="pref-wake" type="checkbox"> Wake word: say "Hey JARVIS"</label>
+        <small>While this is on and the window is open, the microphone stays on. Audio is checked on this laptop for the wake word and is never saved.</small>
+      </div>
+      <div class="setting">
+        <label for="pref-speak">Speak replies</label>
+        <select id="pref-speak">
+          <option value="voice">Only when I speak to JARVIS</option>
+          <option value="always">Always</option>
+          <option value="never">Never</option>
+        </select>
+      </div>
+      <div class="setting">
+        <label for="pref-voice">Voice</label>
+        <div class="row-flex"><select id="pref-voice"></select><button id="test-voice" class="chip" type="button">Test</button></div>
+      </div>
+      <div class="setting">
+        <label for="pref-speed">Speaking speed</label>
+        <input id="pref-speed" type="range" min="0.7" max="1.5" step="0.05">
+      </div>
+      <div class="setting">
+        <label for="pref-volume">Volume</label>
+        <input id="pref-volume" type="range" min="0" max="1" step="0.05">
+      </div>
+      <div class="setting">
+        <label for="pref-mic">Microphone</label>
+        <select id="pref-mic"></select>
+      </div>
+      <div class="setting">
+        <label for="pref-sensitivity">Speech threshold</label>
+        <input id="pref-sensitivity" type="range" min="0.005" max="0.1" step="0.005">
+        <small>How loud a sound must be to count as speech. Raise it in a noisy room; lower it if JARVIS misses you.</small>
+      </div>
+    </div>
+  </section>
+
+  <!-- Latest reply, shown above the ask bar on the homescreen and graph (the orb view has the transcript) -->
+  <div id="bubble" hidden></div>
+  <form id="composer">
+    <button id="mic" class="round" type="button" aria-label="Talk to JARVIS" title="Talk to JARVIS">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+    <span class="prompt" aria-hidden="true">&rsaquo;</span>
+    <textarea id="input" rows="1" placeholder='Type, or say "Hey JARVIS"...  (Enter to send)' aria-label="Message"></textarea>
+    <button id="send" class="chip" type="submit">Send</button>
+  </form>
+
+  <script src="vendor/3d-force-graph.min.js"></script>
+  <script src="app.js?v=2"></script>
+  <script src="voice.js?v=2"></script>
+  <script src="graph.js?v=2"></script>
+</body>
+</html>

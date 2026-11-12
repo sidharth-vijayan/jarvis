@@ -1,0 +1,419 @@
+const $ = id => document.getElementById(id);
+const STATUS_TEXT = { idle: 'Idle', listening: 'Listening', processing: 'Processing', thinking: 'Thinking',
+  responding: 'Responding', speaking: 'Speaking', error: 'Error' };
+const VIEWS = ['orb', 'home', 'graph', 'settings'];
+
+let state = 'idle';
+let view = 'orb';
+let conversationId = null;
+let controller = null; // set while a reply is streaming
+let energy = 0;        // visualizer energy, bumped by each arriving token
+
+async function api(path, options) {
+  const r = await fetch(path, options);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.status === 204 ? null : r.json();
+}
+const putSettings = values => api('/api/settings', {
+  method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values),
+});
+
+function setState(next, text) {
+  state = next;
+  $('status').dataset.state = document.body.dataset.state = next;
+  const label = text || (next === 'idle' && wake.mode === 'waiting' ? wake.hint() : STATUS_TEXT[next]);
+  $('status-text').textContent = label;
+  $('orb-status').textContent = next === 'idle' ? 'Online' : text || STATUS_TEXT[next];
+  $('send').textContent = controller || speaker.active ? 'Stop' : 'Send';
+}
+
+// Activity log: real events from this session, shown on the orb screen and the homescreen feed. Not saved.
+function log(text, kind = 'info') {
+  const time = new Date().toLocaleTimeString('en-GB');
+  for (const id of ['activity', 'feed']) {
+    const box = $(id), row = document.createElement('div'), stamp = document.createElement('time');
+    row.className = `log-row ${kind}`;
+    stamp.textContent = time;
+    row.append(stamp, text);
+    box.append(row);
+    while (box.children.length > 80) box.firstChild.remove();
+    box.scrollTop = box.scrollHeight;
+  }
+}
+
+// Minimal Markdown: fenced code, inline code, bold. Everything is HTML-escaped first.
+const escapeHtml = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function renderMarkdown(text) {
+  return text.split('```').map((part, i) => i % 2
+    ? `<pre><code>${escapeHtml(part.replace(/^[\w-]*\n/, ''))}</code></pre>`
+    : escapeHtml(part).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+  ).join('');
+}
+
+function addMessage(role, text) {
+  const el = document.createElement('div');
+  el.className = `msg ${role}`;
+  if (role === 'user') el.textContent = text; else el.innerHTML = renderMarkdown(text);
+  $('messages').append(el);
+  $('messages').scrollTop = $('messages').scrollHeight;
+  return el;
+}
+function addMeta(el, text) {
+  const meta = document.createElement('span');
+  meta.className = 'meta';
+  meta.textContent = text;
+  el.append(meta);
+}
+
+// ---- Screens ----------------------------------------------------------------------------------
+function showView(name) {
+  view = document.body.dataset.view = name;
+  for (const v of VIEWS) $('view-' + v).hidden = v !== name;
+  document.querySelectorAll('[data-go]').forEach(b => b.classList.toggle('active', b.dataset.go === name));
+  $('bubble').hidden = true;
+  if (name === 'graph') showGraph();
+  if (name === 'home') loadConversations();
+  if (name !== 'graph') refreshStatus();
+}
+// ponytail: screen switching is matched with regexes on short commands. Phase 3 replaces this with real
+// tool calls chosen by the model, which will also handle looser phrasing.
+const VIEW_INTENTS = [
+  [/\b(graph|brain|knowledge map|network|screen (2|two))\b/i, 'graph', 'The graph, on screen.'],
+  [/\b(home ?screen|home|dashboard|command cent(er|re))\b/i, 'home', 'Homescreen, on screen.'],
+  [/\bsettings\b/i, 'settings', 'Settings, on screen.'],
+  [/\b(orb|main screen|screen (1|one))\b/i, 'orb', 'Back to the main screen.'],
+];
+function localCommand(text, viaVoice) {
+  const t = text.trim();
+  if (t.length > 60) return false;
+  let hit;
+  if (/^(please )?((go|take me) )?back\b|^(close|hide|exit) (it|this|that)\b/i.test(t)) hit = [null, 'orb', 'Back to the main screen.'];
+  else if (/^(please )?(show|open|bring up|pull up|go to|take me to|switch to|display)\b/i.test(t)) hit = VIEW_INTENTS.find(([re]) => re.test(t));
+  if (!hit) return false;
+  log(`Command: ${t}`);
+  showView(hit[1]);
+  if (shouldSpeak(viaVoice)) speaker.say(hit[2]);
+  return true;
+}
+
+// ---- Chat -------------------------------------------------------------------------------------
+async function send(text, viaVoice = false) {
+  speaker.stop();
+  recording?.cancel();
+  if (localCommand(text, viaVoice)) return;
+  const speak = shouldSpeak(viaVoice);
+  log(`${viaVoice ? 'Heard' : 'You'}: ${text.length > 70 ? text.slice(0, 70) + '...' : text}`);
+  addMessage('user', text);
+  const el = addMessage('assistant', '');
+  const bubble = $('bubble');
+  let full = '', model = '', failed = false;
+  controller = new AbortController();
+  setState('processing');
+  const onEvent = ev => {
+    if (ev.type === 'start') { conversationId = ev.conversation_id; model = ev.model; }
+    else if (ev.type === 'thinking') setState('thinking');
+    else if (ev.type === 'token') {
+      full += ev.text;
+      el.innerHTML = renderMarkdown(full); // ponytail: re-renders the whole reply per token; fine at chat lengths
+      if (view !== 'orb') { bubble.hidden = false; bubble.innerHTML = el.innerHTML; }
+      energy = Math.min(1, energy + 0.35);
+      if (speak) speaker.feed(ev.text);
+      if (state === 'processing' || state === 'thinking') setState('responding');
+      $('messages').scrollTop = $('messages').scrollHeight;
+    }
+    else if (ev.type === 'done') {
+      addMeta(el, `${model}${ev.tokens_per_s ? ` · ${ev.tokens_per_s} tokens/s` : ''}`);
+      log(`Replied with ${model}${ev.tokens_per_s ? ` at ${ev.tokens_per_s} tokens/s` : ''}`);
+    }
+    else if (ev.type === 'error') throw new Error(ev.message);
+  };
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+      body: JSON.stringify({ message: text, conversation_id: conversationId, mode: $('mode').value, voice: speak }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    const reader = r.body.getReader(), decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        onEvent(JSON.parse(buffer.slice(0, nl)));
+        buffer = buffer.slice(nl + 1);
+      }
+    }
+  } catch (e) {
+    speaker.stop();
+    if (e.name === 'AbortError') { addMeta(el, 'Stopped'); log('Reply stopped', 'warn'); }
+    else {
+      failed = true;
+      el.classList.add('error');
+      el.textContent = (full ? full + '\n\n' : '') + e.message;
+      if (view !== 'orb') { bubble.hidden = false; bubble.textContent = e.message; }
+      log(e.message, 'error');
+    }
+  } finally {
+    controller = null;
+    setState(failed ? 'error' : speaker.playing ? 'speaking' : 'idle');
+    if (speak && !failed) speaker.finish(viaVoice ? listenForFollowUp : null);
+    loadConversations();
+  }
+}
+
+async function loadConversations() {
+  const list = await api('/api/conversations');
+  const box = $('conversations');
+  box.replaceChildren();
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'dim';
+    empty.textContent = 'No conversations yet.';
+    box.append(empty);
+  }
+  for (const c of list) {
+    const row = document.createElement('div');
+    row.className = 'conv' + (c.id === conversationId ? ' active' : '');
+    const title = document.createElement('button');
+    title.className = 'title-btn';
+    title.textContent = c.title;
+    title.onclick = () => openConversation(c.id);
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '×';
+    del.setAttribute('aria-label', `Delete conversation: ${c.title}`);
+    del.onclick = async () => {
+      if (!confirm(`Delete "${c.title}"? This cannot be undone.`)) return;
+      await api(`/api/conversations/${c.id}`, { method: 'DELETE' });
+      if (c.id === conversationId) { conversationId = null; $('messages').replaceChildren(); }
+      loadConversations();
+    };
+    row.append(title, del);
+    box.append(row);
+  }
+}
+function newChat() {
+  controller?.abort();
+  speaker.stop();
+  conversationId = null;
+  $('messages').replaceChildren();
+  showView('orb');
+  $('input').focus();
+}
+async function openConversation(id) {
+  controller?.abort();
+  speaker.stop();
+  conversationId = id;
+  $('messages').replaceChildren();
+  for (const m of await api(`/api/conversations/${id}/messages`)) addMessage(m.role, m.content);
+  showView('orb');
+}
+
+// ---- Status panels ------------------------------------------------------------------------------
+const row = (label, value, tone = '') => {
+  const el = document.createElement('div'), name = document.createElement('span'), val = document.createElement('em');
+  el.className = 'row';
+  name.textContent = label;
+  val.textContent = value;
+  val.className = tone;
+  el.append(name, val);
+  return el;
+};
+async function refreshStatus() {
+  const [status, settings] = await Promise.all([api('/api/status'), api('/api/settings')]);
+  $('mode').value = settings.mode;
+  const modelNow = settings[`model_${settings.mode}`];
+  const wakeOn = wake.mode !== 'off';
+  const voiceName = currentVoice() ? currentVoice().split('-')[1] : 'none installed';
+
+  // Orb screen: AI Core facts
+  const facts = [['Model', modelNow], ['In memory', status.loaded.join(', ') || 'nothing loaded'], ['Mode', settings.mode],
+    ['Voice', voiceName], ['Wake word', wakeOn ? 'on' : 'off']];
+  $('core-facts').replaceChildren(...facts.flatMap(([k, v]) => {
+    const dt = document.createElement('dt'), dd = document.createElement('dd');
+    dt.textContent = k;
+    dd.textContent = v;
+    return [dt, dd];
+  }));
+
+  // Homescreen: overview and model list
+  $('overview').replaceChildren(
+    row('AI core', status.ollama ? 'Active' : 'Offline', status.ollama ? '' : 'warn'),
+    row('Language models', `${status.models.length} installed`),
+    row('Voice', currentVoice() ? `Online · ${voiceName}` : 'No voice installed', currentVoice() ? '' : 'warn'),
+    row('Wake word', wakeOn ? 'Listening' : 'Off', wakeOn ? '' : 'off'),
+    row('Speech recognition', micSupported ? 'Ready' : 'Unavailable', micSupported ? '' : 'warn'),
+    row('Memory', 'Not built yet', 'off'),
+  );
+  const usedBy = name => ['fast', 'balanced', 'advanced'].filter(m => settings[`model_${m}`] === name).join(', ');
+  $('llm').replaceChildren(...(status.models.length ? status.models : [modelNow]).map(name =>
+    row(`${name}${usedBy(name) ? ` · ${usedBy(name)}` : ''}`,
+      !status.models.includes(name) ? 'Not installed' : status.loaded.includes(name) ? 'In memory' : 'Installed',
+      !status.models.includes(name) ? 'warn' : status.loaded.includes(name) ? '' : 'off')));
+
+  // Settings: models
+  const line = $('ollama-status');
+  line.className = status.ollama ? 'ok' : 'bad';
+  line.textContent = status.ollama
+    ? `Ollama is running with ${status.models.length} model(s) installed.`
+    : 'Ollama is not reachable. Start Ollama, then reopen Settings.';
+  for (const key of ['model_fast', 'model_balanced', 'model_advanced']) {
+    const select = $(key);
+    const names = status.models.includes(settings[key]) ? status.models : [settings[key], ...status.models];
+    select.replaceChildren(...names.map(name => new Option(status.models.includes(name) ? name : `${name} (not installed)`, name)));
+    select.value = settings[key];
+    select.onchange = () => putSettings({ [key]: select.value }).then(refreshStatus);
+  }
+  if (!status.ollama && !controller && state !== 'error') { setState('error', 'Ollama offline'); log('Ollama is not reachable', 'error'); }
+  else if (state === 'error' && status.ollama && $('status-text').textContent === 'Ollama offline') setState('idle');
+}
+async function refreshSystem() {
+  if (document.hidden || (view !== 'orb' && view !== 'home')) return;
+  const s = await api('/api/system').catch(() => null);
+  if (!s) return;
+  const values = { cpu: s.cpu, ram: s.ram, disk: s.disk, vram: s.gpu?.vram, battery: s.battery?.percent };
+  for (const [key, v] of Object.entries(values)) {
+    const text = v == null ? 'n/a' : `${Math.round(v)}%`;
+    document.querySelectorAll(`[data-stat="${key}"], [data-ring="${key}"]`).forEach(el => el.style.setProperty('--v', v ?? 0));
+    document.querySelectorAll(`[data-stat-text="${key}"], [data-ring="${key}"] b`).forEach(el => { el.textContent = text; });
+  }
+}
+function tickClock() {
+  const now = new Date();
+  document.querySelectorAll('[data-clock]').forEach(el => { el.textContent = now.toLocaleTimeString('en-GB'); });
+  document.querySelectorAll('[data-date]').forEach(el => {
+    el.textContent = now.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+  });
+}
+
+// ---- The orb: driven by the assistant's real state, tokens arriving, and the live audio level ----------
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let t = 0;
+function draw() {
+  requestAnimationFrame(draw);
+  if (!still) t += 0.016;
+  energy *= 0.93;
+  const canvas = view === 'orb' ? $('viz') : view === 'home' ? $('viz-home') : null;
+  if (!canvas) return;
+  const c = canvas.getContext('2d'), w = canvas.width, mid = w / 2, R = w * 0.3;
+  const busy = state === 'processing' || state === 'thinking';
+  const level = state === 'idle' || state === 'error' || busy ? 0 : Math.max(energy, audioLevel());
+  const rgb = state === 'error' ? '255,90,90' : '60,220,255';
+  const ring = (radius, width, alpha, dash, turn = 0) => {
+    c.setLineDash(dash || []);
+    c.lineDashOffset = turn;
+    c.lineWidth = width;
+    c.strokeStyle = `rgba(${rgb},${alpha})`;
+    c.beginPath();
+    c.arc(mid, mid, radius, 0, Math.PI * 2);
+    c.stroke();
+  };
+  c.clearRect(0, 0, w, w);
+  c.lineCap = 'butt';
+  c.shadowColor = `rgb(${rgb})`;
+  c.shadowBlur = 10;
+
+  // Outer bars: breathe when idle, sweep while working, follow the voice while listening or speaking
+  const N = 96;
+  for (let i = 0; i < N; i++) {
+    const a = i / N * Math.PI * 2;
+    let amp = 0.14 + 0.06 * Math.sin(t * 1.5 + i * 0.35);
+    if (busy) amp = 0.1 + 0.8 * Math.max(0, Math.cos(a - t * (state === 'thinking' ? 5 : 2.5))) ** 6;
+    else if (level) amp = 0.14 + level * (0.3 + 0.7 * Math.abs(Math.sin(i * 1.7 + t * 9)));
+    const from = R * 1.22, to = from + R * 0.34 * amp + 2;
+    c.strokeStyle = `rgba(${rgb},${Math.min(1, 0.3 + amp)})`;
+    c.lineWidth = 2;
+    c.setLineDash([]);
+    c.beginPath();
+    c.moveTo(mid + Math.cos(a) * from, mid + Math.sin(a) * from);
+    c.lineTo(mid + Math.cos(a) * to, mid + Math.sin(a) * to);
+    c.stroke();
+  }
+  const spin = t * (busy ? 60 : 8);
+  ring(R * 1.08, w * 0.022, 0.75, [w * 0.05, w * 0.045], -spin);          // thick segmented ring
+  ring(R * 0.9, 1.5, 0.45, [3, 9], spin * 0.6);                           // fine tick ring
+  ring(R * 0.72, 1, 0.3);
+  ring(R * 0.52, 1, 0.2);
+
+  // Amber accent arc
+  c.setLineDash([]);
+  c.shadowColor = '#f5b942';
+  c.strokeStyle = 'rgba(245,185,66,.85)';
+  c.lineWidth = 3;
+  c.beginPath();
+  c.arc(mid, mid, R * 1.62, -1.0 + t * 0.05, 0.35 + t * 0.05);
+  c.stroke();
+  c.shadowColor = `rgb(${rgb})`;
+
+  // Rotating hexagon with spokes
+  const hex = R * 0.5 * (1 + level * 0.12);
+  c.strokeStyle = `rgba(${rgb},.8)`;
+  c.lineWidth = 1.5;
+  c.beginPath();
+  for (let i = 0; i <= 6; i++) {
+    const a = t * 0.3 + i * Math.PI / 3;
+    c.lineTo(mid + Math.cos(a) * hex, mid + Math.sin(a) * hex);
+  }
+  c.stroke();
+  c.strokeStyle = `rgba(${rgb},.35)`;
+  c.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = t * 0.3 + i * Math.PI / 3;
+    c.moveTo(mid, mid);
+    c.lineTo(mid + Math.cos(a) * hex, mid + Math.sin(a) * hex);
+  }
+  c.stroke();
+
+  // Glowing core
+  const core = R * 0.24 * (1 + level * 0.6 + (busy ? 0.15 * Math.sin(t * 8) : 0.05 * Math.sin(t * 2)));
+  const glow = c.createRadialGradient(mid, mid, 0, mid, mid, core * 2.2);
+  glow.addColorStop(0, 'rgba(255,255,255,.95)');
+  glow.addColorStop(0.25, `rgba(${rgb},.85)`);
+  glow.addColorStop(1, `rgba(${rgb},0)`);
+  c.fillStyle = glow;
+  c.beginPath();
+  c.arc(mid, mid, core * 2.2, 0, Math.PI * 2);
+  c.fill();
+}
+
+// ---- Wiring -----------------------------------------------------------------------------------
+$('composer').onsubmit = e => {
+  e.preventDefault();
+  const text = $('input').value.trim();
+  if (!text) return;
+  if (controller) { // a reply is streaming: screen commands still work, anything else stays as a draft
+    if (localCommand(text, false)) $('input').value = '';
+    return;
+  }
+  $('input').value = '';
+  send(text);
+};
+$('input').onkeydown = e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); }
+};
+$('send').onclick = e => { // doubles as Stop while a reply is streaming or being spoken
+  if (!controller && !speaker.active) return;
+  e.preventDefault();
+  controller?.abort();
+  speaker.stop();
+};
+$('mode').onchange = e => putSettings({ mode: e.target.value }).then(refreshStatus);
+$('new-chat').onclick = newChat;
+$('quick-talk').onclick = () => { showView('orb'); $('mic').click(); };
+document.querySelectorAll('[data-go]').forEach(b => { b.onclick = () => showView(b.dataset.go); });
+$('bubble').onclick = () => { $('bubble').hidden = true; };
+
+addEventListener('DOMContentLoaded', () => { // after voice.js and graph.js have loaded too
+  const hour = new Date().getHours();
+  $('greeting').textContent = `» Good ${hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'}. All systems are online. How may I help?`;
+  log('JARVIS core online');
+  showView('orb');
+  draw();
+  tickClock();
+  refreshSystem();
+  setInterval(tickClock, 1000);
+  setInterval(refreshSystem, 3000);
+  setInterval(() => { if (!document.hidden && view !== 'graph') refreshStatus(); }, 30000);
+});
