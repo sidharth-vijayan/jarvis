@@ -339,7 +339,13 @@ async function initVoice() {
   bind('pref-wake', 'wake', true, el => el.checked, () => prefs.get('wake', true) ? wake.start() : wake.stop());
   $('test-voice').onclick = () => speaker.say('Good evening. All systems are online.');
   $('pref-wake').disabled = !micSupported;
-  if (prefs.get('wake', true)) wake.start();
+  if (prefs.get('wake', true)) await wake.start();
+  if (new URLSearchParams(location.search).has('wake')) { // opened by "Hey JARVIS" said while the window was closed
+    history.replaceState(null, '', '/');
+    log('Wake word detected');
+    await speaker.say('Yes?');
+    if (wake.mode === 'waiting') wake.begin(8000, true); else talk(8000);
+  }
 }
 // Microphone names are only visible once permission has been granted, so refresh when Settings opens.
 async function refreshMics() {

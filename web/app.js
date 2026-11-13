@@ -375,8 +375,10 @@ async function loadGeneral() {
   const [settings, autostart] = await Promise.all([api('/api/settings'), api('/api/autostart')]);
   $('briefing-time').value = settings.briefing_time;
   $('autostart').checked = autostart.enabled;
+  $('background-wake').checked = settings.background_wake === '1';
 }
 $('briefing-time').onchange = e => putSettings({ briefing_time: e.target.value });
+$('background-wake').onchange = e => putSettings({ background_wake: e.target.checked ? '1' : '0' });
 $('autostart').onchange = async e => {
   const want = e.target.checked;
   const got = await api('/api/autostart', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: want }) })

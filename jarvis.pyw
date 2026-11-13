@@ -53,12 +53,13 @@ def window_processes():
             pass
 
 
-def open_window(*_):
+def open_window(*_, woken=False):
+    url = URL + ("/?wake=1" if woken else "")  # ?wake=1: the window says "Yes?" and listens straight away
     browser = next((b for b in BROWSERS if os.path.exists(b)), None)
     if not browser:
-        webbrowser.open(URL)
+        webbrowser.open(url)
         return
-    subprocess.Popen([browser, f"--app={URL}", f"--user-data-dir={PROFILE}", "--no-first-run", "--window-size=1440,900",
+    subprocess.Popen([browser, f"--app={url}", f"--user-data-dir={PROFILE}", "--no-first-run", "--window-size=1440,900",
                       # lets the wake-word listener and spoken replies work before any click in the window
                       "--autoplay-policy=no-user-gesture-required"])
 
@@ -121,6 +122,43 @@ def reminder_loop(icon):
             pass
 
 
+def background_wake_wanted() -> bool:
+    try:
+        return get("/api/settings").get("background_wake") == "1" and not any(window_processes())
+    except (OSError, ValueError):
+        return False
+
+
+def wake_loop():
+    """While no window is open, listen for "Hey JARVIS" on this laptop and open the window when it is heard.
+    The window has its own listener, so this one stops while a window is open. Audio is never stored or sent."""
+    import sounddevice as sd
+    from backend import voice
+    detector = None
+    while True:
+        time.sleep(2)
+        if not background_wake_wanted():
+            continue
+        try:
+            detector = detector or voice.WakeDetector()
+            detector.reset()
+            samples = voice.WAKE_FRAME_BYTES // 2
+            with sd.RawInputStream(samplerate=16000, channels=1, dtype="int16", blocksize=samples) as mic:
+                checked = time.monotonic()
+                while True:
+                    frame, _ = mic.read(samples)
+                    if detector.score(bytes(frame)) >= voice.WAKE_THRESHOLD:
+                        open_window(woken=True)
+                        time.sleep(8)  # give the window time to appear before checking again
+                        break
+                    if time.monotonic() - checked > 2:  # a window opened, or the setting was switched off
+                        checked = time.monotonic()
+                        if not background_wake_wanted():
+                            break
+        except Exception:  # no microphone, or it was unplugged: try again later
+            time.sleep(30)
+
+
 def main():
     if up():  # already running: just bring up a window
         open_window()
@@ -141,6 +179,7 @@ def main():
         pystray.MenuItem("Quit", quit_all)))
     threading.Thread(target=hotkey_loop, daemon=True).start()
     threading.Thread(target=reminder_loop, args=(icon,), daemon=True).start()
+    threading.Thread(target=wake_loop, daemon=True).start()
     if "--background" not in sys.argv:
         open_window()
     try:

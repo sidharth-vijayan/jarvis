@@ -34,7 +34,8 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
 - **Reminders and briefing**: one-off or repeating reminders (daily, weekdays, weekly), and a daily
   briefing of today's reminders and unread mail at a time you set, or when you say "good morning".
 - **Runs in the background**: its own window plus a tray icon. Closing the window keeps JARVIS running, so
-  reminders arrive as Windows notifications; Ctrl+Alt+J brings the window back; Quit is in the tray menu.
+  reminders arrive as Windows notifications, and saying "Hey JARVIS" opens the window, which answers "Yes?"
+  and listens (switch this off in Settings). Ctrl+Alt+J also brings the window back; Quit is in the tray menu.
   It can start with Windows (off by default, in Settings).
 
 ## Requirements
@@ -98,7 +99,8 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | 5. Integrations: calendar, GitHub | Done |
 | 6. Phone access | Planned |
 | 7. Repeating reminders, daily briefing, tray and background mode | Done |
-| 7. Wake word and briefing while the window is closed, website monitoring | Left |
+| 7. Wake word while the window is closed | Done |
+| 7. Briefing while the window is closed, website monitoring | Left |
 
 ## Layout
 

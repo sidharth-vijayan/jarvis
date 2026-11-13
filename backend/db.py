@@ -14,6 +14,7 @@ DEFAULT_SETTINGS = {
     "github_login": "",
     "memory_enabled": "1",
     "briefing_time": "",
+    "background_wake": "1",  # the tray listens for "Hey JARVIS" while no window is open
 }
 
 SCHEMA = """

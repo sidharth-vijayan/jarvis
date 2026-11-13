@@ -97,6 +97,7 @@ class SettingsIn(BaseModel):
     model_balanced: str | None = Field(None, min_length=1, max_length=200)
     model_advanced: str | None = Field(None, min_length=1, max_length=200)
     memory_enabled: Literal["0", "1"] | None = None
+    background_wake: Literal["0", "1"] | None = None
     briefing_time: str | None = Field(None, pattern=r"^$|^([01]\d|2[0-3]):[0-5]\d$")  # "" switches it off
 
 
