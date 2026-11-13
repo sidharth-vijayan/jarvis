@@ -25,6 +25,21 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS reminders (
+    id INTEGER PRIMARY KEY,
+    text TEXT NOT NULL,
+    due TEXT NOT NULL,              -- local time, ISO format
+    delivered INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS audit (  -- every tool call JARVIS made, and whether the user approved it
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    tool TEXT NOT NULL,
+    args TEXT NOT NULL,
+    decision TEXT NOT NULL,         -- auto | approved | declined | blocked
+    ok INTEGER NOT NULL,
+    summary TEXT NOT NULL
+);
 """
 
 
@@ -61,6 +76,35 @@ def set_settings(values: dict):
     with db() as con:
         con.executemany("INSERT INTO settings (key, value) VALUES (?, ?) "
                         "ON CONFLICT(key) DO UPDATE SET value = excluded.value", values.items())
+
+
+def add_reminder(text: str, due: str):
+    with db() as con:
+        con.execute("INSERT INTO reminders (text, due) VALUES (?, ?)", (text, due))
+
+
+def upcoming_reminders() -> list[dict]:
+    with db() as con:
+        return [dict(r) for r in con.execute("SELECT text, due FROM reminders WHERE delivered = 0 ORDER BY due")]
+
+
+def take_due_reminders(now: str) -> list[dict]:
+    """Reminders whose time has come. Each is returned once, then marked delivered."""
+    with db() as con:
+        due = [dict(r) for r in con.execute("SELECT id, text, due FROM reminders WHERE delivered = 0 AND due <= ?", (now,))]
+        con.executemany("UPDATE reminders SET delivered = 1 WHERE id = ?", [(r["id"],) for r in due])
+        return due
+
+
+def add_audit(tool: str, args: str, decision: str, ok: bool, summary: str):
+    with db() as con:
+        con.execute("INSERT INTO audit (tool, args, decision, ok, summary) VALUES (?, ?, ?, ?, ?)",
+                    (tool, args, decision, ok, summary))
+
+
+def list_audit(limit: int = 100) -> list[dict]:
+    with db() as con:
+        return [dict(r) for r in con.execute("SELECT at, tool, args, decision, ok, summary FROM audit ORDER BY id DESC LIMIT ?", (limit,))]
 
 
 def list_conversations() -> list[dict]:

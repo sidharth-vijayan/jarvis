@@ -37,9 +37,9 @@ async def loaded_models() -> list[str]:
         return [m["name"] for m in r.json()["models"]]
 
 
-async def chat_stream(model: str, messages: list[dict], think: bool):
-    """Yield Ollama's streamed chat chunks as dicts."""
-    body = {"model": model, "messages": messages, "stream": True, "think": think,
+async def chat_stream(model: str, messages: list[dict], think: bool, tools: list[dict] | None = None):
+    """Yield Ollama's streamed chat chunks as dicts. `tools` are the function schemas the model may call."""
+    body = {"model": model, "messages": messages, "stream": True, "think": think, **({"tools": tools} if tools else {}),
             "keep_alive": KEEP_ALIVE, "options": {"num_ctx": NUM_CTX}}
     async with httpx.AsyncClient(timeout=httpx.Timeout(10, read=600)) as client:
         async with client.stream("POST", f"{OLLAMA_URL}/api/chat", json=body) as r:

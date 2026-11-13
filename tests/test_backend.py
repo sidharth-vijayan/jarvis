@@ -12,16 +12,31 @@ from backend import llm, main  # noqa: E402
 seen = {}
 
 
-async def fake_stream(model, messages, think):
+async def fake_stream(model, messages, think, tools=None):
     seen.update(model=model, messages=messages, think=think)
     yield {"message": {"thinking": "hmm"}}
     yield {"message": {"content": "Hello"}}
     yield {"message": {"content": ", sir."}, "done": True, "eval_count": 4, "eval_duration": 2_000_000_000}
 
 
-async def broken_stream(model, messages, think):
+async def broken_stream(model, messages, think, tools=None):
     raise RuntimeError("model 'nope' not found")
     yield
+
+
+async def tool_stream(model, messages, think, tools=None):
+    """A model that searches once, calls a tool that does not exist, then answers from the results."""
+    seen.update(messages=messages, offered=[t["function"]["name"] for t in tools or []])
+    if messages[-1]["role"] != "tool":
+        yield {"message": {"tool_calls": [{"function": {"name": "web_search", "arguments": {"query": "news"}}},
+                                          {"function": {"name": "format_disk", "arguments": {}}}]}, "done": True}
+    else:
+        yield {"message": {"content": "It rained [1]."}, "done": True, "eval_count": 3, "eval_duration": 1_000_000_000}
+
+
+async def fake_search(query):
+    from backend.tools import Result
+    return Result(f"[1] Weather\nIt rained. Asked: {query}", [{"title": "Weather", "url": "https://example.com/w"}])
 
 
 def events(response):
@@ -53,6 +68,31 @@ def demo():
         llm.chat_stream = broken_stream
         ev = events(c.post("/api/chat", json={"message": "x", "conversation_id": cid}))
         assert ev[-1] == {"type": "error", "message": "model 'nope' not found"}
+
+        # Tools: the call runs, an unknown tool is refused, the answer follows, real sources are appended.
+        from backend import tools
+        llm.chat_stream = tool_stream
+        tools.REGISTRY["web_search"].run = fake_search
+        ev = events(c.post("/api/chat", json={"message": "any news?", "conversation_id": cid}))
+        assert [e["type"] for e in ev] == ["start", "tool", "tool_result", "tool", "tool_result", "token", "sources", "done"], ev
+        assert ev[1]["label"] == 'Searching the web for "news"' and ev[2]["ok"] and not ev[4]["ok"]
+        assert "web_search" in seen["offered"] and seen["messages"][-1]["content"] == "There is no tool called format_disk."
+        saved = c.get(f"/api/conversations/{cid}/messages").json()[-1]["content"]
+        assert saved == "It rained [1].\n\nSources:\n- [Weather](https://example.com/w)", saved
+
+        # A destructive command is refused by the server without asking, and is recorded in the audit log.
+        async def rm_stream(model, messages, think, tools=None):
+            if messages[-1]["role"] != "tool":
+                yield {"message": {"tool_calls": [{"function": {"name": "run_command", "arguments": {"command": "rm -r ~"}}}]}, "done": True}
+            else:
+                yield {"message": {"content": "I will not do that."}, "done": True}
+        llm.chat_stream = rm_stream
+        ev = events(c.post("/api/chat", json={"message": "wipe my files", "conversation_id": cid}))
+        assert [e["type"] for e in ev] == ["start", "tool", "tool_result", "token", "done"], ev
+        assert ev[2]["decision"] == "blocked" and not ev[2]["ok"]
+        last = c.get("/api/audit").json()[0]
+        assert (last["tool"], last["decision"], last["ok"]) == ("run_command", "blocked", 0), last
+        assert c.post("/api/confirm/nope", json={"approve": True}).status_code == 404
 
         # Delete removes the conversation and its messages.
         assert c.delete(f"/api/conversations/{cid}").status_code == 204

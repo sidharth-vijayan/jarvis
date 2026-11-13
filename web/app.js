@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 const STATUS_TEXT = { idle: 'Idle', listening: 'Listening', processing: 'Processing', thinking: 'Thinking',
-  responding: 'Responding', speaking: 'Speaking', error: 'Error' };
+  executing: 'Executing', waiting: 'Waiting for approval', responding: 'Responding', speaking: 'Speaking', error: 'Error' };
 const VIEWS = ['orb', 'home', 'graph', 'settings'];
 
 let state = 'idle';
@@ -8,6 +8,7 @@ let view = 'orb';
 let conversationId = null;
 let controller = null; // set while a reply is streaming
 let energy = 0;        // visualizer energy, bumped by each arriving token
+let pendingConfirm = null; // { id, card } while JARVIS waits for the user to approve an action
 
 async function api(path, options) {
   const r = await fetch(path, options);
@@ -41,12 +42,19 @@ function log(text, kind = 'info') {
   }
 }
 
-// Minimal Markdown: fenced code, inline code, bold. Everything is HTML-escaped first.
+// Minimal Markdown: fenced code, bullets, inline code, bold, http(s) links. Everything is HTML-escaped first, so the
+// only tags that can appear are the ones built here; links are limited to http and https addresses.
 const escapeHtml = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const link = (label, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
 function renderMarkdown(text) {
   return text.split('```').map((part, i) => i % 2
     ? `<pre><code>${escapeHtml(part.replace(/^[\w-]*\n/, ''))}</code></pre>`
-    : escapeHtml(part).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    : escapeHtml(part)
+      .replace(/^(\s*)[*-]\s+/gm, '$1• ')
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(^|[\s(])(https?:\/\/[^\s<)]+)/g,
+        (m, label, url, before, bare) => url ? link(label, url) : before + link(bare, bare))
   ).join('');
 }
 
@@ -83,8 +91,58 @@ const VIEW_INTENTS = [
   [/\bsettings\b/i, 'settings', 'Settings, on screen.'],
   [/\b(orb|main screen|screen (1|one))\b/i, 'orb', 'Back to the main screen.'],
 ];
+// ---- Approvals ----------------------------------------------------------------------------------
+// The server pauses before any consequential action and sends its exact effect. Nothing runs until answered.
+function askConfirm(ev, speak, viaVoice) {
+  const card = document.createElement('div'), title = document.createElement('strong'), preview = document.createElement('pre');
+  const buttons = document.createElement('div'), yes = document.createElement('button'), no = document.createElement('button');
+  card.className = 'msg confirm';
+  title.textContent = 'Approval needed';
+  preview.textContent = ev.preview;
+  buttons.className = 'confirm-buttons';
+  yes.className = 'chip approve';
+  yes.textContent = 'Approve';
+  yes.onclick = () => answerConfirm(true);
+  no.className = 'chip';
+  no.textContent = 'Deny';
+  no.onclick = () => answerConfirm(false);
+  buttons.append(yes, no);
+  card.append(title, preview, buttons);
+  $('messages').append(card);
+  $('messages').scrollTop = $('messages').scrollHeight;
+  pendingConfirm = { id: ev.id, card };
+  if (view !== 'orb') showView('orb'); // the card lives in the transcript
+  setState('waiting');
+  log(`Approval needed: ${ev.label}`, 'warn');
+  if (speak) speaker.say('Shall I go ahead?').then(() => { // then listen for a spoken yes or no
+    if (pendingConfirm && viaVoice && wake.mode === 'waiting') wake.begin(8000, true);
+  });
+}
+function closeConfirm(text) {
+  if (!pendingConfirm) return;
+  const note = document.createElement('span');
+  note.className = 'meta';
+  note.textContent = text;
+  pendingConfirm.card.querySelector('.confirm-buttons').replaceWith(note);
+  pendingConfirm = null;
+}
+async function answerConfirm(approve) {
+  if (!pendingConfirm) return;
+  const { id } = pendingConfirm;
+  closeConfirm(approve ? 'Approved' : 'Declined');
+  speaker.stop();
+  setState(approve ? 'executing' : 'processing');
+  log(approve ? 'Approved' : 'Declined', approve ? 'info' : 'warn');
+  await api(`/api/confirm/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approve }) })
+    .catch(e => log(e.message, 'error'));
+}
+
 function localCommand(text, viaVoice) {
   const t = text.trim();
+  if (pendingConfirm) { // while an approval is waiting, a yes or no (typed or spoken) answers it
+    if (/^(yes|yeah|yep|yup|sure|ok(ay)?|go ahead|do it|confirm|approve|send it|proceed)\b/i.test(t)) { answerConfirm(true); return true; }
+    if (/^(no|nope|don'?t|do not|cancel|stop|deny|decline|never ?mind)\b/i.test(t)) { answerConfirm(false); return true; }
+  }
   if (t.length > 60) return false;
   let hit;
   if (/^(please )?((go|take me) )?back\b|^(close|hide|exit) (it|this|that)\b/i.test(t)) hit = [null, 'orb', 'Back to the main screen.'];
@@ -101,6 +159,7 @@ async function send(text, viaVoice = false) {
   speaker.stop();
   recording?.cancel();
   if (localCommand(text, viaVoice)) return;
+  if (controller) return; // one request at a time (reached by voice while a reply or an approval is in progress)
   const speak = shouldSpeak(viaVoice);
   log(`${viaVoice ? 'Heard' : 'You'}: ${text.length > 70 ? text.slice(0, 70) + '...' : text}`);
   addMessage('user', text);
@@ -118,8 +177,16 @@ async function send(text, viaVoice = false) {
       if (view !== 'orb') { bubble.hidden = false; bubble.innerHTML = el.innerHTML; }
       energy = Math.min(1, energy + 0.35);
       if (speak) speaker.feed(ev.text);
-      if (state === 'processing' || state === 'thinking') setState('responding');
+      if (state === 'processing' || state === 'thinking' || state === 'executing') setState('responding');
       $('messages').scrollTop = $('messages').scrollHeight;
+    }
+    else if (ev.type === 'tool') { setState('executing', ev.label); log(ev.label); }
+    else if (ev.type === 'tool_result') { log(ev.summary, ev.ok ? 'info' : 'warn'); setState('processing'); }
+    else if (ev.type === 'confirm') askConfirm(ev, speak, viaVoice);
+    else if (ev.type === 'sources') { // pages the server really fetched; shown, not spoken
+      full += ev.text;
+      el.innerHTML = renderMarkdown(full);
+      if (view !== 'orb') bubble.innerHTML = el.innerHTML;
     }
     else if (ev.type === 'done') {
       addMeta(el, `${model}${ev.tokens_per_s ? ` · ${ev.tokens_per_s} tokens/s` : ''}`);
@@ -157,6 +224,8 @@ async function send(text, viaVoice = false) {
     }
   } finally {
     controller = null;
+    closeConfirm('Cancelled'); // only if one was still waiting: Stop cancels it, and nothing runs
+    if (!full && !failed) el.remove(); // nothing was said (for example, stopped during a tool)
     setState(failed ? 'error' : speaker.playing ? 'speaking' : 'idle');
     if (speak && !failed) speaker.finish(viaVoice ? listenForFollowUp : null);
     loadConversations();
@@ -280,6 +349,16 @@ async function refreshSystem() {
     document.querySelectorAll(`[data-stat-text="${key}"], [data-ring="${key}"] b`).forEach(el => { el.textContent = text; });
   }
 }
+// Reminders are delivered by this window: shown, logged, and spoken unless speech is turned off.
+// ponytail: only fires while the window is open; the always-on background service (Phase 7) takes this over.
+async function checkReminders() {
+  for (const r of await api('/api/reminders/due').catch(() => [])) {
+    log(`Reminder: ${r.text}`, 'warn');
+    addMessage('assistant', `**Reminder:** ${r.text}`);
+    if (view !== 'orb') { $('bubble').hidden = false; $('bubble').textContent = `Reminder: ${r.text}`; }
+    if (prefs.get('speak', 'voice') !== 'never' && currentVoice() && !controller && !recording) await speaker.say(`Reminder. ${r.text}`);
+  }
+}
 function tickClock() {
   const now = new Date();
   document.querySelectorAll('[data-clock]').forEach(el => { el.textContent = now.toLocaleTimeString('en-GB'); });
@@ -298,7 +377,7 @@ function draw() {
   const canvas = view === 'orb' ? $('viz') : view === 'home' ? $('viz-home') : null;
   if (!canvas) return;
   const c = canvas.getContext('2d'), w = canvas.width, mid = w / 2, R = w * 0.3;
-  const busy = state === 'processing' || state === 'thinking';
+  const busy = state === 'processing' || state === 'thinking' || state === 'executing' || state === 'waiting';
   const level = state === 'idle' || state === 'error' || busy ? 0 : Math.max(energy, audioLevel());
   const rgb = state === 'error' ? '255,90,90' : '60,220,255';
   const ring = (radius, width, alpha, dash, turn = 0) => {
@@ -415,5 +494,6 @@ addEventListener('DOMContentLoaded', () => { // after voice.js and graph.js have
   refreshSystem();
   setInterval(tickClock, 1000);
   setInterval(refreshSystem, 3000);
+  setInterval(checkReminders, 20000);
   setInterval(() => { if (!document.hidden && view !== 'graph') refreshStatus(); }, 30000);
 });

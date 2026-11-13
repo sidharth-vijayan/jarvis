@@ -109,6 +109,14 @@ body[data-state="error"] #orb-status { color: var(--error); }
 .msg.error { border-left-color: var(--error); color: var(--error); }
 .msg pre, #bubble pre { background: #02060c; border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow-x: auto; }
 .msg code, #bubble code { font-family: var(--mono); font-size: 12.5px; }
+.msg.confirm { border: 1px solid var(--amber); background: rgba(245, 185, 66, .07); }
+.msg.confirm strong { font: 11px var(--mono); letter-spacing: .15em; text-transform: uppercase; color: var(--amber); }
+.msg.confirm pre { margin: 6px 0; white-space: pre-wrap; }
+.confirm-buttons { display: flex; gap: 8px; }
+.chip.approve { border-color: var(--amber); color: var(--amber); }
+#status[data-state="waiting"] { color: var(--amber); }
+.msg a, #bubble a { color: var(--accent); overflow-wrap: anywhere; }
+#status[data-state="executing"] { color: var(--amber); }
 .msg .meta { display: block; margin-top: 4px; font: 10px var(--mono); color: var(--dim); letter-spacing: .06em; }
 
 .term { flex: none; height: 34%; padding: 0; overflow: hidden; }

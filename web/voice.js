@@ -57,7 +57,8 @@ const speaker = {
   enqueue(raw) {
     if (raw.includes('```')) { this.inCode = !this.inCode; return; } // never read code aloud
     if (this.inCode || this.capped) return;
-    let text = raw.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_#`>|]/g, '').trim();
+    let text = raw.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\[\d+\]/g, '').replace(/https?:\/\/\S+/g, '')
+      .replace(/[*_#`>|•]/g, '').replace(/\s+([.,!?])/g, '$1').trim(); // no link syntax, citations or addresses aloud
     if (!/[a-z0-9]/i.test(text)) return;
     if (this.spokenChars + text.length > 600) { this.capped = true; text = 'The rest is on screen.'; } // don't read long replies aloud
     this.spokenChars += text.length;

@@ -10,13 +10,21 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
 - **Chat** with a local model through Ollama, streamed as it is written. Conversations are saved.
 - **Voice**: say "Hey JARVIS" and ask, in one breath or after it answers "Yes?". Replies are spoken, and it
   listens a few seconds for a follow-up. The wake word also interrupts a reply.
+- **Web search** with no API key: searches DuckDuckGo, reads the top pages, answers with links to the pages
+  it actually opened. "Summarize <link>" works too.
+- **PC control**: open apps and websites, find files, open and summarize documents (PDF, Word, text),
+  tidy a folder, move files, set reminders.
+- **Approval before anything consequential**: moving files, running a command or sending a message shows
+  the exact effect and waits for Approve or Deny (or a spoken yes or no). Destructive commands are refused
+  outright. Every tool call is recorded in an audit log.
+- **WhatsApp** messages through WhatsApp Web: built, but sending is not yet tested with a linked account.
 - **Three reasoning modes**: Fast and Balanced (Gemma 4 E4B), Advanced (Qwen 3.5 9B).
 - **Three screens**: the orb (default), a homescreen dashboard, and a 3D graph of what JARVIS knows about.
   Switch by saying or typing "show homescreen", "show the graph", "go back".
 - **Live system panel**: CPU, memory, GPU memory, battery.
 - Runs as its own window. Closing the window stops everything.
 
-It cannot control the PC, read mail or remember things across conversations yet. See the roadmap.
+It cannot read mail or remember things across conversations yet. See the roadmap.
 
 ## Requirements
 
@@ -70,7 +78,9 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 |---|---|
 | 1. Foundation: chat, storage, interface | Done |
 | 2. Voice: speech in and out, wake word | Done |
-| 3. Desktop control: apps, files, browser, WhatsApp | Next |
+| 3. Web search, desktop control, reminders, approvals | Done |
+| 3. WhatsApp: verify sending with a linked phone | Left |
+| 3. Reminders when the window is closed, general browser automation | Left |
 | Gmail: read and summarize mail | Planned |
 | 4. Agent and memory | Planned |
 | 5. Integrations: calendar, GitHub, Telegram | Planned |
@@ -81,7 +91,7 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 
 | Path | What it is |
 |---|---|
-| `backend/` | FastAPI server: chat (`main.py`), Ollama client (`llm.py`), speech and wake word (`voice.py`), SQLite (`db.py`) |
+| `backend/` | FastAPI server: chat and agent loop (`main.py`), tool registry (`tools.py`), web (`web.py`), PC tools (`desktop.py`), WhatsApp (`whatsapp.py`), Ollama (`llm.py`), speech (`voice.py`), SQLite (`db.py`) |
 | `web/` | The interface in plain HTML, CSS and JavaScript, no build step |
 | `jarvis.pyw` | Launcher: starts the server and opens the app window |
 | `tests/` | Runnable checks: `python -m tests.test_backend`, `tests.test_voice`, `tests.test_wake` |
