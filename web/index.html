@@ -192,6 +192,33 @@
       <button id="mail-disconnect" class="chip" type="button" hidden>Disconnect Gmail</button>
     </div>
     <div class="panel settings">
+      <h2>Google Calendar (read-only)</h2>
+      <p id="calendar-status" class="dim"></p>
+      <form class="account-form" data-account="calendar">
+        <div class="setting">
+          <label for="calendar-value">Secret address in iCal format</label>
+          <input id="calendar-value" type="password" autocomplete="off" required>
+          <small>In Google Calendar on the web: Settings, click your calendar on the left, "Integrate calendar",
+            copy "Secret address in iCal format". Stored in Windows Credential Manager on this laptop only.</small>
+        </div>
+        <button class="chip" type="submit">Connect</button>
+      </form>
+      <button class="chip account-disconnect" data-account="calendar" type="button" hidden>Disconnect Calendar</button>
+    </div>
+    <div class="panel settings">
+      <h2>GitHub (read-only)</h2>
+      <p id="github-status" class="dim"></p>
+      <form class="account-form" data-account="github">
+        <div class="setting">
+          <label for="github-value">Personal access token</label>
+          <input id="github-value" type="password" autocomplete="off" required>
+          <small>A fine-grained token with read-only access. Stored in Windows Credential Manager on this laptop only.</small>
+        </div>
+        <button class="chip" type="submit">Connect</button>
+      </form>
+      <button class="chip account-disconnect" data-account="github" type="button" hidden>Disconnect GitHub</button>
+    </div>
+    <div class="panel settings">
       <h2>Voice</h2>
       <p id="voice-missing" class="bad" hidden>No voices are installed in data/voices, so replies cannot be spoken.</p>
       <div class="setting">

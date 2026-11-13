@@ -18,7 +18,7 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import db, desktop, llm, mail, tools, voice
+from . import accounts, db, desktop, llm, mail, tools, voice
 
 Mode = Literal["fast", "balanced", "advanced"]
 # ponytail: naive "last N messages" context window; make it token-aware / summarized in Phase 4 (memory).
@@ -34,6 +34,9 @@ You act through tools. When the user asks you to do something, call the tool; do
   Cite the pages you used as [1], [2].
 - Mail: check_email lists Gmail messages (use the query is:unread for new mail); read_email reads one in
   full. You can only read mail, not send, delete or mark it. Mention sender and subject when you summarize.
+- Calendar: check_calendar (read-only). GitHub: check_github (read-only). Earlier tool results are not kept
+  between messages, so for a follow-up about something listed before (when it was opened, its link), call the
+  tool again rather than saying you do not know.
 - PC: open_app, open_website, search_files, open_file, read_document (to summarize a document, find it with
   search_files, then read_document), organize_folder, move_file, set_reminder, list_reminders, send_whatsapp,
   run_command (last resort).
@@ -126,9 +129,16 @@ def briefing_context() -> str:
     today = datetime.now().date().isoformat()
     todays = [r for r in db.upcoming_reminders() if r["due"][:10] == today]
     lines = ["", "Daily briefing data, gathered just now. Brief the user from it in a few short sentences: a greeting, "
-             "then today's reminders, then mail worth knowing about. Do not call tools for this and do not add "
-             "anything that is not listed here.",
+             "then today's events and reminders, then mail worth knowing about. Do not call tools for this and do "
+             "not add anything that is not listed here.",
              "Reminders today: " + ("; ".join(f"{r['due'][11:]} {r['text']}" for r in todays) or "none")]
+    if accounts.calendar_connected():
+        try:
+            found = accounts.events(datetime.now().date())
+            lines.append("Calendar today (untrusted titles): " + ("; ".join(
+                f"{'all day' if e['all_day'] else e['start'][11:]} {e['title']}" for e in found) or "nothing"))
+        except Exception:
+            lines.append("Calendar: could not be checked just now.")
     if not mail.address():
         lines.append("Mail: Gmail is not connected.")
     else:
@@ -309,6 +319,35 @@ def mail_disconnect():
     global _inbox_cache
     mail.disconnect()
     _inbox_cache = (0.0, None)
+
+
+class SecretIn(BaseModel):
+    value: str = Field(min_length=10, max_length=500)
+
+
+@app.get("/api/accounts")
+def accounts_status():
+    return {"calendar": accounts.calendar_connected(), "github": accounts.github_login()}
+
+
+@app.put("/api/accounts/{name}")
+def account_connect(name: Literal["calendar", "github"], body: SecretIn):
+    try:
+        if name == "calendar":
+            accounts.connect_calendar(body.value)
+        else:
+            accounts.connect_github(body.value)
+    except Exception as e:  # never echo the link or token back
+        msg = str(e) if isinstance(e, ValueError) else (
+            "Could not download a calendar from that link." if name == "calendar"
+            else "GitHub refused that token. Check it and try again.")
+        raise HTTPException(400, msg)
+    return accounts_status()
+
+
+@app.delete("/api/accounts/{name}", status_code=204)
+def account_disconnect(name: Literal["calendar", "github"]):
+    accounts.disconnect_calendar() if name == "calendar" else accounts.disconnect_github()
 
 
 @app.get("/api/autostart")

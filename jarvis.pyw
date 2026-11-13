@@ -76,6 +76,19 @@ def start_server():
     return server
 
 
+def stop_server(server):
+    """The venv's python.exe is a launcher that starts the real interpreter as a child, so stop the whole tree."""
+    try:
+        procs = psutil.Process(server.pid).children(recursive=True) + [psutil.Process(server.pid)]
+    except psutil.Error:
+        return
+    for p in procs:
+        try:
+            p.terminate()
+        except psutil.Error:
+            pass
+
+
 def tray_image():
     image = Image.new("RGBA", (64, 64), (5, 10, 20, 255))
     draw = ImageDraw.Draw(image)
@@ -120,7 +133,7 @@ def main():
                 p.terminate()
             except psutil.Error:
                 pass
-        server.terminate()
+        stop_server(server)
         icon.stop()
 
     icon = pystray.Icon("JARVIS", tray_image(), "JARVIS", pystray.Menu(
@@ -133,7 +146,7 @@ def main():
     try:
         icon.run()
     finally:
-        server.terminate()
+        stop_server(server)
 
 
 main()

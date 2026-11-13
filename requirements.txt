@@ -9,4 +9,5 @@ psutil
 pystray  # tray icon; brings Pillow
 pypdf
 keyring  # stores the Gmail app password in Windows Credential Manager
+recurring-ical-events  # expands repeating calendar events; brings icalendar
 playwright  # drives the installed Edge for WhatsApp; no browser download needed

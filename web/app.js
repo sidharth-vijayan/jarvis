@@ -446,6 +446,36 @@ $('mail-disconnect').onclick = async () => {
   refreshMail();
 };
 
+// ---- Calendar and GitHub ------------------------------------------------------------------------
+async function refreshAccounts() {
+  const a = await api('/api/accounts').catch(() => null);
+  if (!a) return;
+  const text = { calendar: a.calendar ? 'Connected. JARVIS can read your events but cannot change them.' : 'Not connected.',
+    github: a.github ? `Connected as ${a.github}. Read-only.` : 'Not connected.' };
+  for (const name of ['calendar', 'github']) {
+    $(`${name}-status`).textContent = text[name];
+    document.querySelector(`.account-form[data-account=${name}]`).hidden = !!a[name];
+    document.querySelector(`.account-disconnect[data-account=${name}]`).hidden = !a[name];
+  }
+}
+document.querySelectorAll('.account-form').forEach(form => form.onsubmit = async e => {
+  e.preventDefault();
+  const name = form.dataset.account, input = $(`${name}-value`);
+  const body = JSON.stringify({ value: input.value.trim() });
+  input.value = ''; // never keep it in the page
+  $(`${name}-status`).textContent = 'Connecting...';
+  try {
+    await api(`/api/accounts/${name}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+    log(`${name === 'calendar' ? 'Calendar' : 'GitHub'} connected`);
+    await refreshAccounts();
+  } catch (err) { $(`${name}-status`).textContent = err.message; }
+});
+document.querySelectorAll('.account-disconnect').forEach(btn => btn.onclick = async () => {
+  if (!confirm('Disconnect? The stored secret is removed from this laptop.')) return;
+  await api(`/api/accounts/${btn.dataset.account}`, { method: 'DELETE' });
+  refreshAccounts();
+});
+
 // Reminders are delivered by this window: shown, logged, and spoken unless speech is turned off.
 // ponytail: only fires while the window is open; the always-on background service (Phase 7) takes this over.
 async function checkReminders() {
@@ -595,6 +625,7 @@ addEventListener('DOMContentLoaded', () => { // after voice.js and graph.js have
   setInterval(checkReminders, 20000);
   setInterval(checkBriefing, 30000);
   refreshMail();
+  refreshAccounts();
   setInterval(() => { if (!document.hidden) refreshMail(); }, 120000);
   setInterval(() => { if (!document.hidden && view !== 'graph') refreshStatus(); }, 30000);
 });

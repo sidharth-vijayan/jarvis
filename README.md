@@ -22,7 +22,10 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
   It can also search earlier conversations ("what did we discuss about my project?").
 - **Gmail, read-only**: "check my unread mail", "any mail from my professor?". Connect it in Settings with
   a Google app password, which is stored in Windows Credential Manager. JARVIS cannot send, delete or mark
-  mail. Tested against a fake mailbox, not yet against a real account.
+  mail.
+- **Google Calendar and GitHub, read-only**: "what's on this week?", "my open pull requests", "how many
+  contributions this year?". Today's events are part of the briefing. Connect both in Settings: the calendar's
+  secret iCal link and a read-only GitHub token, both stored in Windows Credential Manager.
 - **WhatsApp** messages through WhatsApp Web: built, but sending is not yet tested with a linked account.
 - **Three reasoning modes**: Fast and Balanced (Gemma 4 E4B), Advanced (Qwen 3.5 9B).
 - **Three screens**: the orb (default), a homescreen dashboard, and a 3D graph of what JARVIS knows about.
@@ -90,9 +93,9 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | 3. Web search, desktop control, reminders, approvals | Done |
 | 3. WhatsApp: verify sending with a linked phone | Left |
 | 3. General browser automation (forms, downloads) | Left |
-| Gmail: read and summarize mail | Done, needs a real-account check |
+| Gmail: read and summarize mail | Done |
 | 4. Agent and memory | Done |
-| 5. Integrations: calendar, GitHub, Telegram | Planned |
+| 5. Integrations: calendar, GitHub | Done |
 | 6. Phone access | Planned |
 | 7. Repeating reminders, daily briefing, tray and background mode | Done |
 | 7. Wake word and briefing while the window is closed, website monitoring | Left |

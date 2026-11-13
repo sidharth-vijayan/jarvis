@@ -47,12 +47,20 @@ def _load_whisper():
         return _whisper
 
 
+def _warm_all():
+    _load_whisper()
+    installed = voices()
+    default = next((v for v in installed if "alan" in v), installed[0] if installed else None)  # same pick as voice.js
+    if default:
+        speak("Ready.", default)  # loads the voice; a cold load under memory pressure took ~1 minute
+
+
 def warm():
-    """Load Whisper in the background so the first spoken request is not slow."""
+    """Load Whisper and the default voice in the background so the first spoken request and reply are not slow."""
     global _warming
     if not _warming:
         _warming = True
-        threading.Thread(target=_load_whisper, daemon=True).start()
+        threading.Thread(target=_warm_all, daemon=True).start()
 
 
 def transcribe(audio: bytes) -> str:

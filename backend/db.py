@@ -11,6 +11,7 @@ DEFAULT_SETTINGS = {
     "model_balanced": "gemma4:e4b-it-q4_K_M",
     "model_advanced": "qwen3.5:9b",
     "gmail_address": "",
+    "github_login": "",
     "memory_enabled": "1",
     "briefing_time": "",
 }
