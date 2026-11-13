@@ -349,6 +349,38 @@ async function refreshSystem() {
     document.querySelectorAll(`[data-stat-text="${key}"], [data-ring="${key}"] b`).forEach(el => { el.textContent = text; });
   }
 }
+// ---- Gmail ------------------------------------------------------------------------------------
+async function refreshMail() {
+  const m = await api('/api/mail').catch(() => null);
+  if (!m) return;
+  const box = $('inbox');
+  $('mail-form').hidden = m.connected;
+  $('mail-disconnect').hidden = !m.connected;
+  $('mail-status').textContent = m.connected ? `Connected as ${m.address}. JARVIS can read mail but cannot send, delete or change it.` : 'Not connected.';
+  if (!m.connected) box.textContent = 'Not connected. Add Gmail in Settings.';
+  else if (m.error) box.textContent = `Could not reach Gmail: ${m.error}`;
+  else box.replaceChildren(row('Unread', String(m.unread), m.unread ? '' : 'off'),
+    ...m.latest.map(mail => row(mail.subject, mail.from.replace(/\s*<.*>/, '').slice(0, 18), 'off')));
+}
+$('mail-form').onsubmit = async e => {
+  e.preventDefault();
+  const body = JSON.stringify({ address: $('mail-address').value.trim(), app_password: $('mail-password').value });
+  $('mail-password').value = ''; // never keep it in the page
+  $('mail-status').textContent = 'Connecting...';
+  try {
+    await api('/api/mail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    log('Gmail connected');
+  } catch (err) { log(err.message, 'error'); }
+  await refreshMail().catch(() => {});
+  if (!$('mail-form').hidden) $('mail-status').textContent = 'Gmail refused that address and app password. Check both and try again.';
+};
+$('mail-disconnect').onclick = async () => {
+  if (!confirm('Disconnect Gmail? The stored app password is removed from this laptop.')) return;
+  await api('/api/mail', { method: 'DELETE' });
+  log('Gmail disconnected');
+  refreshMail();
+};
+
 // Reminders are delivered by this window: shown, logged, and spoken unless speech is turned off.
 // ponytail: only fires while the window is open; the always-on background service (Phase 7) takes this over.
 async function checkReminders() {
@@ -495,5 +527,7 @@ addEventListener('DOMContentLoaded', () => { // after voice.js and graph.js have
   setInterval(tickClock, 1000);
   setInterval(refreshSystem, 3000);
   setInterval(checkReminders, 20000);
+  refreshMail();
+  setInterval(() => { if (!document.hidden) refreshMail(); }, 120000);
   setInterval(() => { if (!document.hidden && view !== 'graph') refreshStatus(); }, 30000);
 });

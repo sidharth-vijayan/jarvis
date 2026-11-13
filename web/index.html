@@ -47,10 +47,9 @@
         <h2>AI Core</h2>
         <dl class="facts" id="core-facts"></dl>
       </div>
-      <div class="panel off">
+      <div class="panel">
         <h2>Inbox</h2>
-        <p>Not connected</p>
-        <small>Arrives with the Gmail phase.</small>
+        <div id="inbox" class="rows dim">Checking...</div>
       </div>
     </div>
     <div class="center">
@@ -114,8 +113,7 @@
     <div class="panel off" style="grid-area: later">
       <h2>Not connected yet</h2>
       <div class="rows">
-        <div class="row"><span>Desktop control, WhatsApp</span><em>Phase 3</em></div>
-        <div class="row"><span>Inbox</span><em>Gmail phase</em></div>
+        <div class="row"><span>WhatsApp sending</span><em>Needs testing</em></div>
         <div class="row"><span>Memory</span><em>Phase 4</em></div>
         <div class="row"><span>Calendar, tasks</span><em>Phase 5</em></div>
         <div class="row"><span>Briefings, reminders</span><em>Phase 7</em></div>
@@ -160,6 +158,24 @@
         <select id="model_advanced"></select>
         <small>Reasons before answering, meant for the larger model. Slowest.</small>
       </div>
+    </div>
+    <div class="panel settings">
+      <h2>Gmail (read-only)</h2>
+      <p id="mail-status" class="dim"></p>
+      <form id="mail-form">
+        <div class="setting">
+          <label for="mail-address">Gmail address</label>
+          <input id="mail-address" type="email" autocomplete="off" required>
+        </div>
+        <div class="setting">
+          <label for="mail-password">App password</label>
+          <input id="mail-password" type="password" autocomplete="off" required minlength="8">
+          <small>Not your normal password. Turn on 2-Step Verification, then create a 16-letter app password at
+            myaccount.google.com/apppasswords. It is stored in Windows Credential Manager on this laptop only.</small>
+        </div>
+        <button class="chip" type="submit">Connect</button>
+      </form>
+      <button id="mail-disconnect" class="chip" type="button" hidden>Disconnect Gmail</button>
     </div>
     <div class="panel settings">
       <h2>Voice</h2>

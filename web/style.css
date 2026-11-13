@@ -32,7 +32,7 @@ h2 {
 }
 .dim, small { color: var(--dim); }
 .bad { color: var(--error); }
-select, textarea, input[type="search"] {
+select, textarea, input[type="search"], input[type="email"], input[type="password"] {
   background: rgba(4, 12, 22, .9); color: var(--text); border: 1px solid var(--line);
   border-radius: 6px; padding: 7px 9px; font: inherit;
 }

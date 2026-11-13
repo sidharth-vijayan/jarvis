@@ -7,4 +7,5 @@ piper-tts
 openwakeword
 psutil
 pypdf
+keyring  # stores the Gmail app password in Windows Credential Manager
 playwright  # drives the installed Edge for WhatsApp; no browser download needed
