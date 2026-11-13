@@ -2,6 +2,7 @@
 File access is limited to the user's own folder. Nothing here deletes or overwrites a file."""
 import asyncio
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -10,7 +11,7 @@ import subprocess
 import time
 import webbrowser
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import db
@@ -376,6 +377,81 @@ async def read_email(id: str) -> Result:
         return Result(f"There is no email with id {id}.", ok=False)
     return Result(f"{MAIL_NOTE}{m['date']} | From: {m['from']} | Subject: {m['subject']}\n{m['text'][:7000]}",
                   summary=f"Read: {m['subject'][:80]}")
+
+
+# ---- Website monitoring ---------------------------------------------------------------------------
+WATCH_MINUTES = 30  # how often each watched page is re-checked
+
+
+def _fingerprint(text: str, look_for: str) -> str:
+    if look_for:
+        return "found" if look_for.lower() in text.lower() else "missing"
+    # ponytail: hashes all the page text, so pages with clocks, counters or rotating ads alert on every check;
+    # use look_for for those, or compare only a chosen part of the page if that turns out to be common.
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+async def check_watches(now: datetime | None = None):
+    """Re-check watched pages that are due. A change becomes a reminder due now, so it is delivered like one
+    (spoken in the window, or a Windows notification from the tray)."""
+    from . import web
+    now = now or datetime.now()
+    for w in db.list_watches():
+        if datetime.fromisoformat(w["checked_at"]) > now - timedelta(minutes=WATCH_MINUTES):
+            continue
+        page = await web.read(w["url"], min_chars=1)
+        stamp = now.isoformat(timespec="minutes")
+        if not page:  # unreachable this time: try again next round, without alerting
+            db.update_watch(w["id"], w["fingerprint"], stamp)
+            continue
+        new = _fingerprint(page["text"], w["look_for"])
+        db.update_watch(w["id"], new, stamp)
+        if w["look_for"] and new == "found" and w["fingerprint"] != "found":
+            db.add_reminder(f'{w["name"]}: "{w["look_for"]}" now appears on the page. {w["url"]}', stamp)
+        elif not w["look_for"] and new != w["fingerprint"]:
+            db.add_reminder(f'{w["name"]} has changed. {w["url"]}', stamp)
+
+
+@tool("Watch a web page and alert the user when it changes, or when some text appears on it (for example "
+      "'in stock', 'results announced', 'tickets available'). It is checked every 30 minutes while JARVIS runs.",
+      label=lambda a: f'Watching {a.get("url", "")}',
+      url="The page's full web address", name="A short name for it, like 'PS5 stock' or 'exam results'",
+      look_for="Text to wait for, or the word any to alert on any change")
+async def watch_website(url: str, name: str, look_for: str) -> Result:
+    from . import web
+    look_for = "" if look_for.lower().strip(" '\"") in ("any", "none", "any change") else look_for[:200]
+    name = name[:80]
+    page = await web.read(url, min_chars=1)
+    if not page:
+        return Result(f"Could not open {url}, so it is not being watched.", ok=False)
+    fp = _fingerprint(page["text"], look_for)
+    db.add_watch(url, name, look_for, fp, datetime.now().isoformat(timespec="minutes"))
+    if look_for and fp == "found":
+        state = f'"{look_for}" is already on the page now. You will be told if it disappears and comes back.'
+    elif look_for:
+        state = f'"{look_for}" is not on the page yet. You will be told when it appears.'
+    else:
+        state = "You will be told when the page changes."
+    return Result(f"Now watching {name} ({url}), checked every {WATCH_MINUTES} minutes. {state}",
+                  summary=f"Watching {name}")
+
+
+@tool("List the web pages being watched.", label=lambda a: "Listing watched pages")
+async def list_watches() -> Result:
+    watches = db.list_watches()
+    if not watches:
+        return Result("No pages are being watched.")
+    return Result("\n".join(f'[id {w["id"]}] {w["name"]}: {w["url"]}'
+                            + (f' (waiting for "{w["look_for"]}")' if w["look_for"] else " (any change)")
+                            + f', last checked {w["checked_at"]}' for w in watches))
+
+
+@tool("Stop watching a web page, using an id from list_watches.", label=lambda a: "Stopping a watch",
+      id="The watch's id number")
+async def stop_watching(id: str) -> Result:
+    if not id.strip().isdigit() or not db.delete_watch(int(id)):
+        return Result(f"There is no watched page with id {id}.", ok=False)
+    return Result(f"Stopped watching page {id}.")
 
 
 # ---- Calendar and GitHub (read-only) --------------------------------------------------------------

@@ -40,6 +40,7 @@ You act through tools. When the user asks you to do something, call the tool; do
 - PC: open_app, open_website, search_files, open_file, read_document (to summarize a document, find it with
   search_files, then read_document), organize_folder, move_file, set_reminder, list_reminders, send_whatsapp,
   run_command (last resort).
+- Watching pages: watch_website ("tell me when this page changes / when X appears"), list_watches, stop_watching.
 - Some tools (send_whatsapp, organize_folder, move_file, run_command) need the user's approval. The app
   handles that: it shows the user exactly what will happen and waits for their answer. So call the tool
   straight away. Never ask "shall I proceed?" or "please confirm" yourself; that makes the user confirm twice.
@@ -56,10 +57,21 @@ MAX_STEPS = 5  # model turns per request: each tool call costs one
 MAX_AUDIO_BYTES = 25_000_000
 
 
+async def watch_loop():
+    while True:
+        try:
+            await desktop.check_watches()
+        except Exception:  # a bad page or a locked database must not stop future checks
+            pass
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(_app):
     db.init()
+    watcher = asyncio.create_task(watch_loop())
     yield
+    watcher.cancel()
 
 
 app = FastAPI(title="JARVIS", lifespan=lifespan)
@@ -98,6 +110,7 @@ class SettingsIn(BaseModel):
     model_advanced: str | None = Field(None, min_length=1, max_length=200)
     memory_enabled: Literal["0", "1"] | None = None
     background_wake: Literal["0", "1"] | None = None
+    last_briefing: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     briefing_time: str | None = Field(None, pattern=r"^$|^([01]\d|2[0-3]):[0-5]\d$")  # "" switches it off
 
 

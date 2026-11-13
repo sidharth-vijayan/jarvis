@@ -362,13 +362,13 @@ function giveBriefing(viaVoice = false) {
   if (view !== 'orb') showView('orb');
   send('Give me my daily briefing.', viaVoice, true);
 }
-// ponytail: the scheduled briefing fires from this window, so it needs the window open at that time.
-// Moving it into the tray process is the upgrade once briefings matter while the window is closed.
+// The scheduled briefing: given by this window if it is open, otherwise the tray opens it with ?briefing=1.
+// The server remembers the day it was last given, so the two never both give it.
 async function checkBriefing() {
-  const today = new Date().toDateString(), now = new Date().toTimeString().slice(0, 5);
-  const at = (await api('/api/settings').catch(() => ({}))).briefing_time;
-  if (!at || now < at || prefs.get('lastBriefing', '') === today || controller || recording || state !== 'idle') return;
-  prefs.set('lastBriefing', today);
+  const today = new Date().toLocaleDateString('en-CA'), now = new Date().toTimeString().slice(0, 5); // YYYY-MM-DD, HH:MM
+  const s = await api('/api/settings').catch(() => ({}));
+  if (!s.briefing_time || now < s.briefing_time || s.last_briefing === today || controller || recording || state !== 'idle') return;
+  await putSettings({ last_briefing: today });
   giveBriefing();
 }
 async function loadGeneral() {

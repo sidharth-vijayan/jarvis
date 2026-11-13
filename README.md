@@ -32,7 +32,10 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
   Switch by saying or typing "show homescreen", "show the graph", "go back".
 - **Live system panel**: CPU, memory, GPU memory, battery.
 - **Reminders and briefing**: one-off or repeating reminders (daily, weekdays, weekly), and a daily
-  briefing of today's reminders and unread mail at a time you set, or when you say "good morning".
+  briefing of today's events, reminders and unread mail at a time you set (the window opens for it if it is
+  closed), or when you say "good morning".
+- **Website monitoring**: "tell me when this page says in stock", "let me know when <link> changes". Pages
+  are checked every 30 minutes; a change arrives like a reminder.
 - **Runs in the background**: its own window plus a tray icon. Closing the window keeps JARVIS running, so
   reminders arrive as Windows notifications, and saying "Hey JARVIS" opens the window, which answers "Yes?"
   and listens (switch this off in Settings). Ctrl+Alt+J also brings the window back; Quit is in the tray menu.
@@ -100,7 +103,7 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | 6. Phone access | Planned |
 | 7. Repeating reminders, daily briefing, tray and background mode | Done |
 | 7. Wake word while the window is closed | Done |
-| 7. Briefing while the window is closed, website monitoring | Left |
+| 7. Briefing while the window is closed, website monitoring | Done |
 
 ## Layout
 

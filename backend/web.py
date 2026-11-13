@@ -71,8 +71,9 @@ def _client() -> httpx.AsyncClient:
                              event_hooks={"request": [_check]})
 
 
-async def fetch(client: httpx.AsyncClient, url: str) -> dict | None:
-    """Download one page. Returns {url, title, text}, or None if it could not be read."""
+async def fetch(client: httpx.AsyncClient, url: str, min_chars: int = 200) -> dict | None:
+    """Download one page. Returns {url, title, text}, or None if it could not be read or has under min_chars
+    of text (for search, a near-empty page is useless)."""
     try:
         async with client.stream("GET", url) as r:
             if r.status_code != 200 or not r.headers.get("content-type", "").startswith(("text/html", "text/plain")):
@@ -83,7 +84,7 @@ async def fetch(client: httpx.AsyncClient, url: str) -> dict | None:
                 if len(body) > MAX_PAGE_BYTES:
                     break
             title, text = extract(body.decode(r.encoding or "utf-8", errors="replace"))
-            return {"url": str(r.url), "title": title or str(r.url), "text": text} if len(text) > 200 else None
+            return {"url": str(r.url), "title": title or str(r.url), "text": text} if len(text) >= min_chars else None
     except (httpx.HTTPError, ValueError):
         return None
 
@@ -114,6 +115,6 @@ async def search_and_read(query: str, pages: int = 3) -> tuple[list[dict], list[
         return results, [p for p in fetched if p][:pages]
 
 
-async def read(url: str) -> dict | None:
+async def read(url: str, min_chars: int = 200) -> dict | None:
     async with _client() as client:
-        return await fetch(client, url)
+        return await fetch(client, url, min_chars)

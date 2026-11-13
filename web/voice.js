@@ -340,8 +340,10 @@ async function initVoice() {
   $('test-voice').onclick = () => speaker.say('Good evening. All systems are online.');
   $('pref-wake').disabled = !micSupported;
   if (prefs.get('wake', true)) await wake.start();
-  if (new URLSearchParams(location.search).has('wake')) { // opened by "Hey JARVIS" said while the window was closed
-    history.replaceState(null, '', '/');
+  const opened = new URLSearchParams(location.search);
+  if (opened.has('wake') || opened.has('briefing')) history.replaceState(null, '', '/');
+  if (opened.has('briefing')) giveBriefing(); // opened by the tray at briefing time
+  else if (opened.has('wake')) { // opened by "Hey JARVIS" said while the window was closed
     log('Wake word detected');
     await speaker.say('Yes?');
     if (wake.mode === 'waiting') wake.begin(8000, true); else talk(8000);

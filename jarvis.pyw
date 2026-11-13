@@ -53,8 +53,9 @@ def window_processes():
             pass
 
 
-def open_window(*_, woken=False):
-    url = URL + ("/?wake=1" if woken else "")  # ?wake=1: the window says "Yes?" and listens straight away
+def open_window(*_, woken=False, briefing=False):
+    # ?wake=1: the window says "Yes?" and listens straight away; ?briefing=1: it gives the daily briefing
+    url = URL + ("/?wake=1" if woken else "/?briefing=1" if briefing else "")
     browser = next((b for b in BROWSERS if os.path.exists(b)), None)
     if not browser:
         webbrowser.open(url)
@@ -110,14 +111,28 @@ def hotkey_loop():
             open_window()
 
 
+def briefing_due() -> bool:
+    """The scheduled briefing time has passed today and it has not been given yet. Marks it as given."""
+    s, today = get("/api/settings"), time.strftime("%Y-%m-%d")
+    if not s["briefing_time"] or time.strftime("%H:%M") < s["briefing_time"] or s["last_briefing"] == today:
+        return False
+    request = urllib.request.Request(URL + "/api/settings", method="PUT", headers={"Content-Type": "application/json"},
+                                     data=json.dumps({"last_briefing": today}).encode())
+    urllib.request.urlopen(request, timeout=3).close()
+    return True
+
+
 def reminder_loop(icon):
-    """While no window is open, deliver due reminders as Windows notifications (the window speaks them itself)."""
+    """While no window is open, deliver due reminders as Windows notifications (the window speaks them itself),
+    and open the window for the daily briefing when its time comes."""
     while True:
         time.sleep(20)
         try:
             if not any(window_processes()):
                 for r in get("/api/reminders/due"):
                     icon.notify(r["text"], "JARVIS reminder")
+                if briefing_due():
+                    open_window(briefing=True)
         except (OSError, ValueError):
             pass
 

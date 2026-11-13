@@ -14,6 +14,7 @@ DEFAULT_SETTINGS = {
     "github_login": "",
     "memory_enabled": "1",
     "briefing_time": "",
+    "last_briefing": "",  # YYYY-MM-DD of the last scheduled briefing, shared by the window and the tray
     "background_wake": "1",  # the tray listens for "Hey JARVIS" while no window is open
 }
 
@@ -52,6 +53,14 @@ CREATE TABLE IF NOT EXISTS audit (  -- every tool call JARVIS made, and whether 
     decision TEXT NOT NULL,         -- auto | approved | declined | blocked
     ok INTEGER NOT NULL,
     summary TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS watches (  -- web pages JARVIS checks for changes
+    id INTEGER PRIMARY KEY,
+    url TEXT NOT NULL,
+    name TEXT NOT NULL,
+    look_for TEXT NOT NULL DEFAULT '', -- '' = any change; otherwise alert when this text appears
+    fingerprint TEXT NOT NULL,         -- hash of the page text, or 'found' / 'missing' for look_for
+    checked_at TEXT NOT NULL
 );
 """
 
@@ -125,6 +134,27 @@ def take_due_reminders(now: str) -> list[dict]:
             else:
                 con.execute("UPDATE reminders SET delivered = 1 WHERE id = ?", (r["id"],))
         return due
+
+
+def add_watch(url: str, name: str, look_for: str, fingerprint: str, now: str) -> int:
+    with db() as con:
+        return con.execute("INSERT INTO watches (url, name, look_for, fingerprint, checked_at) VALUES (?, ?, ?, ?, ?)",
+                           (url, name, look_for, fingerprint, now)).lastrowid
+
+
+def list_watches() -> list[dict]:
+    with db() as con:
+        return [dict(r) for r in con.execute("SELECT * FROM watches ORDER BY id")]
+
+
+def update_watch(wid: int, fingerprint: str, now: str):
+    with db() as con:
+        con.execute("UPDATE watches SET fingerprint = ?, checked_at = ? WHERE id = ?", (fingerprint, now, wid))
+
+
+def delete_watch(wid: int) -> bool:
+    with db() as con:
+        return con.execute("DELETE FROM watches WHERE id = ?", (wid,)).rowcount == 1
 
 
 def add_memory(text: str, category: str) -> bool:
