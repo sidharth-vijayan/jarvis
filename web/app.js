@@ -81,6 +81,7 @@ function showView(name) {
   $('bubble').hidden = true;
   if (name === 'graph') showGraph();
   if (name === 'home') { loadConversations(); loadMemories(); }
+  if (name === 'settings') loadGeneral();
   if (name !== 'graph') refreshStatus();
 }
 // ponytail: screen switching is matched with regexes on short commands. Phase 3 replaces this with real
@@ -144,6 +145,7 @@ function localCommand(text, viaVoice) {
     if (/^(no|nope|don'?t|do not|cancel|stop|deny|decline|never ?mind)\b/i.test(t)) { answerConfirm(false); return true; }
   }
   if (t.length > 60) return false;
+  if (/^(good morning|((give me|what'?s|what is) )?(my )?((daily|morning) )?briefing|brief me)\b/i.test(t)) { giveBriefing(viaVoice); return true; }
   let hit;
   if (/^(please )?((go|take me) )?back\b|^(close|hide|exit) (it|this|that)\b/i.test(t)) hit = [null, 'orb', 'Back to the main screen.'];
   else if (/^(please )?(show|open|bring up|pull up|go to|take me to|switch to|display)\b/i.test(t)) hit = VIEW_INTENTS.find(([re]) => re.test(t));
@@ -155,12 +157,13 @@ function localCommand(text, viaVoice) {
 }
 
 // ---- Chat -------------------------------------------------------------------------------------
-async function send(text, viaVoice = false) {
+async function send(text, viaVoice = false, briefing = false) {
   speaker.stop();
   recording?.cancel();
-  if (localCommand(text, viaVoice)) return;
+  if (!briefing && localCommand(text, viaVoice)) return;
   if (controller) return; // one request at a time (reached by voice while a reply or an approval is in progress)
-  const speak = shouldSpeak(viaVoice);
+  // A briefing is meant to be heard, so it is spoken unless speech is switched off altogether.
+  const speak = briefing ? !!currentVoice() && prefs.get('speak', 'voice') !== 'never' : shouldSpeak(viaVoice);
   log(`${viaVoice ? 'Heard' : 'You'}: ${text.length > 70 ? text.slice(0, 70) + '...' : text}`);
   addMessage('user', text);
   const el = addMessage('assistant', '');
@@ -197,7 +200,7 @@ async function send(text, viaVoice = false) {
   try {
     const r = await fetch('/api/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
-      body: JSON.stringify({ message: text, conversation_id: conversationId, mode: $('mode').value, voice: speak }),
+      body: JSON.stringify({ message: text, conversation_id: conversationId, mode: $('mode').value, voice: speak, briefing }),
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
     const reader = r.body.getReader(), decoder = new TextDecoder();
@@ -352,6 +355,36 @@ async function refreshSystem() {
     document.querySelectorAll(`[data-stat-text="${key}"], [data-ring="${key}"] b`).forEach(el => { el.textContent = text; });
   }
 }
+// ---- Daily briefing and general settings --------------------------------------------------------------
+// The server gathers today's reminders and unread mail; the model only has to say it.
+function giveBriefing(viaVoice = false) {
+  log('Daily briefing');
+  if (view !== 'orb') showView('orb');
+  send('Give me my daily briefing.', viaVoice, true);
+}
+// ponytail: the scheduled briefing fires from this window, so it needs the window open at that time.
+// Moving it into the tray process is the upgrade once briefings matter while the window is closed.
+async function checkBriefing() {
+  const today = new Date().toDateString(), now = new Date().toTimeString().slice(0, 5);
+  const at = (await api('/api/settings').catch(() => ({}))).briefing_time;
+  if (!at || now < at || prefs.get('lastBriefing', '') === today || controller || recording || state !== 'idle') return;
+  prefs.set('lastBriefing', today);
+  giveBriefing();
+}
+async function loadGeneral() {
+  const [settings, autostart] = await Promise.all([api('/api/settings'), api('/api/autostart')]);
+  $('briefing-time').value = settings.briefing_time;
+  $('autostart').checked = autostart.enabled;
+}
+$('briefing-time').onchange = e => putSettings({ briefing_time: e.target.value });
+$('autostart').onchange = async e => {
+  const want = e.target.checked;
+  const got = await api('/api/autostart', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: want }) })
+    .catch(err => { log(err.message, 'error'); return { enabled: !want }; });
+  e.target.checked = got.enabled;
+  log(got.enabled ? 'JARVIS will start with Windows' : 'JARVIS will not start with Windows');
+};
+
 // ---- Memory: everything JARVIS has saved about you, to inspect, correct or delete ---------------------
 async function loadMemories() {
   const list = await api('/api/memories').catch(() => []);
@@ -545,6 +578,7 @@ $('send').onclick = e => { // doubles as Stop while a reply is streaming or bein
 $('mode').onchange = e => putSettings({ mode: e.target.value }).then(refreshStatus);
 $('new-chat').onclick = newChat;
 $('quick-talk').onclick = () => { showView('orb'); $('mic').click(); };
+$('quick-briefing').onclick = () => giveBriefing();
 document.querySelectorAll('[data-go]').forEach(b => { b.onclick = () => showView(b.dataset.go); });
 $('bubble').onclick = () => { $('bubble').hidden = true; };
 
@@ -559,6 +593,7 @@ addEventListener('DOMContentLoaded', () => { // after voice.js and graph.js have
   setInterval(tickClock, 1000);
   setInterval(refreshSystem, 3000);
   setInterval(checkReminders, 20000);
+  setInterval(checkBriefing, 30000);
   refreshMail();
   setInterval(() => { if (!document.hidden) refreshMail(); }, 120000);
   setInterval(() => { if (!document.hidden && view !== 'graph') refreshStatus(); }, 30000);

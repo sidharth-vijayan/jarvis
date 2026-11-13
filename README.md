@@ -28,7 +28,11 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
 - **Three screens**: the orb (default), a homescreen dashboard, and a 3D graph of what JARVIS knows about.
   Switch by saying or typing "show homescreen", "show the graph", "go back".
 - **Live system panel**: CPU, memory, GPU memory, battery.
-- Runs as its own window. Closing the window stops everything.
+- **Reminders and briefing**: one-off or repeating reminders (daily, weekdays, weekly), and a daily
+  briefing of today's reminders and unread mail at a time you set, or when you say "good morning".
+- **Runs in the background**: its own window plus a tray icon. Closing the window keeps JARVIS running, so
+  reminders arrive as Windows notifications; Ctrl+Alt+J brings the window back; Quit is in the tray menu.
+  It can start with Windows (off by default, in Settings).
 
 ## Requirements
 
@@ -57,8 +61,9 @@ The speech recognition model (Whisper) downloads itself on first use.
 .venv\Scripts\pythonw jarvis.pyw
 ```
 
-This starts the local server and opens the JARVIS window. Allow the microphone when asked. For a
-desktop icon, make a shortcut to that command with the project folder as its working directory.
+This starts the local server, opens the JARVIS window and adds a tray icon. Allow the microphone when
+asked. For a desktop icon, make a shortcut to that command with the project folder as its working
+directory. To stop JARVIS, right-click the tray icon and choose Quit.
 
 To run only the server and use a browser tab instead: `.venv\Scripts\python -m backend`, then open
 http://127.0.0.1:8765.
@@ -84,12 +89,13 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | 2. Voice: speech in and out, wake word | Done |
 | 3. Web search, desktop control, reminders, approvals | Done |
 | 3. WhatsApp: verify sending with a linked phone | Left |
-| 3. Reminders when the window is closed, general browser automation | Left |
+| 3. General browser automation (forms, downloads) | Left |
 | Gmail: read and summarize mail | Done, needs a real-account check |
 | 4. Agent and memory | Done |
 | 5. Integrations: calendar, GitHub, Telegram | Planned |
 | 6. Phone access | Planned |
-| 7. Reminders and daily briefings | Planned |
+| 7. Repeating reminders, daily briefing, tray and background mode | Done |
+| 7. Wake word and briefing while the window is closed, website monitoring | Left |
 
 ## Layout
 
@@ -112,6 +118,7 @@ Optional environment variables:
 | `JARVIS_WHISPER_MODEL` | `small.en` | `base.en` is about 3x faster, less accurate |
 | `JARVIS_WAKE_THRESHOLD` | `0.5` | Lower triggers the wake word more easily |
 | `JARVIS_KEEP_ALIVE` | `30m` | How long the model stays in memory after use |
+| `JARVIS_HOTKEY` | `ctrl+alt+j` | Global shortcut that opens the window |
 
 The server listens on `127.0.0.1` only. If the app does not start, see `data/server.log`.
 

@@ -253,24 +253,28 @@ async def move_file(source: str, destination: str) -> Result:
 
 # ---- Reminders ------------------------------------------------------------------------------------
 
-@tool("Set a reminder. JARVIS will show and speak it at that time, while the JARVIS window is open.",
+@tool("Set a reminder, once or repeating. JARVIS speaks it if its window is open, or shows a Windows notification.",
       label=lambda a: f'Setting a reminder: {a.get("text", "")}',
-      text="What to remind the user about", when="Date and time in ISO format, for example 2026-11-14T17:00")
-async def set_reminder(text: str, when: str) -> Result:
+      text="What to remind the user about",
+      when="Date and time of the (first) reminder in ISO format, for example 2026-11-14T17:00",
+      repeat="How often it repeats. One of: none, daily, weekdays, weekly")
+async def set_reminder(text: str, when: str, repeat: str) -> Result:
     try:
         due = datetime.fromisoformat(when).replace(tzinfo=None)
     except ValueError:
         return Result(f'"{when}" is not a valid date and time. Use the form 2026-11-14T17:00.', ok=False)
     if due < datetime.now():
         return Result(f"{due:%Y-%m-%d %H:%M} is in the past. It is now {datetime.now():%Y-%m-%d %H:%M}.", ok=False)
-    db.add_reminder(text, due.isoformat(timespec="minutes"))
-    return Result(f'Reminder set for {due:%A %d %B at %H:%M}: "{text}".')
+    repeat = repeat.lower() if repeat.lower() in db.REPEATS else ""
+    db.add_reminder(text, due.isoformat(timespec="minutes"), repeat)
+    return Result(f'Reminder set for {due:%A %d %B at %H:%M}{", repeating " + repeat if repeat else ""}: "{text}".')
 
 
 @tool("List the reminders that are still to come.", label=lambda a: "Checking reminders")
 async def list_reminders() -> Result:
     items = db.upcoming_reminders()
-    return Result("\n".join(f"{r['due'].replace('T', ' ')}: {r['text']}" for r in items) if items else "There are no upcoming reminders.")
+    return Result("\n".join(f"{r['due'].replace('T', ' ')}{' (' + r['repeat'] + ')' if r['repeat'] else ''}: {r['text']}" for r in items)
+                  if items else "There are no upcoming reminders.")
 
 
 # ---- Memory ---------------------------------------------------------------------------------------

@@ -65,15 +65,33 @@ def demo():
         assert any(a["Name"] == "Notepad" for a in desktop.installed_apps()), "Get-StartApps returned no Notepad"
 
         # Reminders: past times refused; a due reminder is delivered exactly once.
-        assert run("set_reminder", text="x", when="2020-01-01T10:00").ok is False
-        assert run("set_reminder", text="x", when="tomorrow").ok is False
+        assert run("set_reminder", text="x", when="2020-01-01T10:00", repeat="none").ok is False
+        assert run("set_reminder", text="x", when="tomorrow", repeat="none").ok is False
         soon = (datetime.now() + timedelta(minutes=5)).isoformat(timespec="minutes")
-        assert run("set_reminder", text="call the bank", when=soon).ok
+        assert run("set_reminder", text="call the bank", when=soon, repeat="none").ok
         assert "call the bank" in run("list_reminders").text
         assert db.take_due_reminders(datetime.now().isoformat(timespec="minutes")) == []
         later = (datetime.now() + timedelta(minutes=6)).isoformat(timespec="minutes")
         assert [r["text"] for r in db.take_due_reminders(later)] == ["call the bank"]
         assert db.take_due_reminders(later) == []
+
+        # Repeating reminders move to their next time instead of ending; weekdays skip the weekend;
+        # occurrences missed while the PC was off are skipped, not replayed.
+        db.add_reminder("standup", "2026-11-13T09:00", "weekdays")  # a Friday
+        assert [r["text"] for r in db.take_due_reminders("2026-11-13T09:00")] == ["standup"]
+        assert db.upcoming_reminders()[0]["due"] == "2026-11-16T09:00"  # Monday
+        assert db.take_due_reminders("2026-11-13T23:00") == []
+        assert len(db.take_due_reminders("2026-11-25T12:00")) == 1 and db.upcoming_reminders()[0]["due"] == "2026-11-26T09:00"
+        db.add_reminder("review", "2026-11-13T10:00", "weekly")
+        db.take_due_reminders("2026-11-13T10:00")
+        assert "2026-11-20T10:00" in [r["due"] for r in db.upcoming_reminders()]
+
+        # Start with Windows: the switch creates and removes one shortcut (tested in a temporary folder).
+        from backend import main
+        main.set_autostart(True, box)
+        assert (box / "JARVIS.lnk").is_file()
+        main.set_autostart(False, box)
+        assert not (box / "JARVIS.lnk").exists()
 
         # WhatsApp: the preview shows the exact contact and words; odd names are refused without opening anything.
         assert asyncio.run(desktop._whatsapp_preview("Rahul", "running late")) == \

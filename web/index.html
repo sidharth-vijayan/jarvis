@@ -92,6 +92,7 @@
       <div class="rows">
         <button class="row-btn" data-go="orb">Back to the orb</button>
         <button class="row-btn" id="quick-talk">Talk to JARVIS</button>
+        <button class="row-btn" id="quick-briefing">Daily briefing</button>
         <button class="row-btn" data-go="graph">Open the graph</button>
         <button class="row-btn" data-go="settings">Settings</button>
       </div>
@@ -152,6 +153,24 @@
         <label for="model_advanced">Advanced</label>
         <select id="model_advanced"></select>
         <small>Reasons before answering, meant for the larger model. Slowest.</small>
+      </div>
+    </div>
+    <div class="panel settings">
+      <h2>General</h2>
+      <div class="setting">
+        <label for="briefing-time">Daily briefing at</label>
+        <input id="briefing-time" type="time">
+        <small>JARVIS reads out today's reminders and unread mail at this time, if its window is open. Clear the
+          time to switch it off. You can also say "good morning" or "brief me" at any time.</small>
+      </div>
+      <div class="setting">
+        <label><input id="autostart" type="checkbox"> Start JARVIS when Windows starts</label>
+        <small>It starts quietly in the system tray, near the clock.</small>
+      </div>
+      <div class="setting">
+        <small>Closing the window leaves JARVIS running in the tray, so reminders still arrive as notifications.
+          Press Ctrl+Alt+J to bring the window back. To stop JARVIS completely, right-click its tray icon and
+          choose Quit.</small>
       </div>
     </div>
     <div class="panel settings">

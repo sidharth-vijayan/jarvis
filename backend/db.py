@@ -2,6 +2,7 @@
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 
 DEFAULT_SETTINGS = {
@@ -11,6 +12,7 @@ DEFAULT_SETTINGS = {
     "model_advanced": "qwen3.5:9b",
     "gmail_address": "",
     "memory_enabled": "1",
+    "briefing_time": "",
 }
 
 SCHEMA = """
@@ -31,7 +33,8 @@ CREATE TABLE IF NOT EXISTS reminders (
     id INTEGER PRIMARY KEY,
     text TEXT NOT NULL,
     due TEXT NOT NULL,              -- local time, ISO format
-    delivered INTEGER NOT NULL DEFAULT 0
+    delivered INTEGER NOT NULL DEFAULT 0,
+    repeat TEXT NOT NULL DEFAULT '' -- '', daily, weekdays or weekly
 );
 CREATE TABLE IF NOT EXISTS memories (  -- lasting facts about the user; the user can see, edit and delete all of them
     id INTEGER PRIMARY KEY,
@@ -72,6 +75,8 @@ def db():
 def init():
     with db() as con:
         con.executescript(SCHEMA)
+        if "repeat" not in [c["name"] for c in con.execute("PRAGMA table_info(reminders)")]:  # databases from before Phase 7
+            con.execute("ALTER TABLE reminders ADD COLUMN repeat TEXT NOT NULL DEFAULT ''")
 
 
 def get_settings() -> dict:
@@ -86,21 +91,37 @@ def set_settings(values: dict):
                         "ON CONFLICT(key) DO UPDATE SET value = excluded.value", values.items())
 
 
-def add_reminder(text: str, due: str):
+REPEATS = ("daily", "weekdays", "weekly")
+
+
+def add_reminder(text: str, due: str, repeat: str = ""):
     with db() as con:
-        con.execute("INSERT INTO reminders (text, due) VALUES (?, ?)", (text, due))
+        con.execute("INSERT INTO reminders (text, due, repeat) VALUES (?, ?, ?)", (text, due, repeat))
 
 
 def upcoming_reminders() -> list[dict]:
     with db() as con:
-        return [dict(r) for r in con.execute("SELECT text, due FROM reminders WHERE delivered = 0 ORDER BY due")]
+        return [dict(r) for r in con.execute("SELECT text, due, repeat FROM reminders WHERE delivered = 0 ORDER BY due")]
+
+
+def _next(due: datetime, repeat: str, now: datetime) -> datetime:
+    """The next time a repeating reminder is due, strictly after `now` (missed occurrences are skipped)."""
+    while True:
+        due += timedelta(days=7 if repeat == "weekly" else 1)
+        if due > now and not (repeat == "weekdays" and due.weekday() >= 5):
+            return due
 
 
 def take_due_reminders(now: str) -> list[dict]:
-    """Reminders whose time has come. Each is returned once, then marked delivered."""
+    """Reminders whose time has come. Each is returned once; a repeating one is then moved to its next time."""
     with db() as con:
-        due = [dict(r) for r in con.execute("SELECT id, text, due FROM reminders WHERE delivered = 0 AND due <= ?", (now,))]
-        con.executemany("UPDATE reminders SET delivered = 1 WHERE id = ?", [(r["id"],) for r in due])
+        due = [dict(r) for r in con.execute("SELECT id, text, due, repeat FROM reminders WHERE delivered = 0 AND due <= ?", (now,))]
+        for r in due:
+            if r["repeat"] in REPEATS:
+                later = _next(datetime.fromisoformat(r["due"]), r["repeat"], datetime.fromisoformat(now))
+                con.execute("UPDATE reminders SET due = ? WHERE id = ?", (later.isoformat(timespec="minutes"), r["id"]))
+            else:
+                con.execute("UPDATE reminders SET delivered = 1 WHERE id = ?", (r["id"],))
         return due
 
 
