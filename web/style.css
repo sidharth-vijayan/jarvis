@@ -31,6 +31,7 @@ h2 {
   padding-bottom: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--line);
 }
 .dim, small { color: var(--dim); }
+.mini { font: 10px var(--mono); letter-spacing: .08em; color: var(--dim); text-transform: none; display: flex; align-items: center; gap: 4px; }
 .bad { color: var(--error); }
 select, textarea, input[type="search"], input[type="email"], input[type="password"] {
   background: rgba(4, 12, 22, .9); color: var(--text); border: 1px solid var(--line);

@@ -17,6 +17,9 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
 - **Approval before anything consequential**: moving files, running a command or sending a message shows
   the exact effect and waits for Approve or Deny (or a spoken yes or no). Destructive commands are refused
   outright. Every tool call is recorded in an audit log.
+- **Memory**: tell it something lasting ("my manager is Priya") and it knows it in later conversations.
+  Everything saved is listed on the homescreen, where you can edit or delete it, or switch memory off.
+  It can also search earlier conversations ("what did we discuss about my project?").
 - **Gmail, read-only**: "check my unread mail", "any mail from my professor?". Connect it in Settings with
   a Google app password, which is stored in Windows Credential Manager. JARVIS cannot send, delete or mark
   mail. Tested against a fake mailbox, not yet against a real account.
@@ -26,8 +29,6 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
   Switch by saying or typing "show homescreen", "show the graph", "go back".
 - **Live system panel**: CPU, memory, GPU memory, battery.
 - Runs as its own window. Closing the window stops everything.
-
-It cannot remember things across conversations yet. See the roadmap.
 
 ## Requirements
 
@@ -85,7 +86,7 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | 3. WhatsApp: verify sending with a linked phone | Left |
 | 3. Reminders when the window is closed, general browser automation | Left |
 | Gmail: read and summarize mail | Done, needs a real-account check |
-| 4. Agent and memory | Planned |
+| 4. Agent and memory | Done |
 | 5. Integrations: calendar, GitHub, Telegram | Planned |
 | 6. Phone access | Planned |
 | 7. Reminders and daily briefings | Planned |

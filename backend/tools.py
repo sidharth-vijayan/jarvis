@@ -44,12 +44,12 @@ def tool(description: str, label: Callable[[dict], str], risk: str = "safe", pre
     return register
 
 
-def schemas() -> list[dict]:
+def schemas(exclude: tuple = ()) -> list[dict]:
     return [{"type": "function", "function": {
         "name": t.name, "description": t.description,
         "parameters": {"type": "object", "required": list(t.params),
                        "properties": {k: {"type": "string", "description": v} for k, v in t.params.items()}}}}
-        for t in REGISTRY.values()]
+        for t in REGISTRY.values() if t.name not in exclude]
 
 
 def label(name: str, args: dict) -> str:

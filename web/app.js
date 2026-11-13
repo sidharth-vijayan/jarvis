@@ -80,7 +80,7 @@ function showView(name) {
   document.querySelectorAll('[data-go]').forEach(b => b.classList.toggle('active', b.dataset.go === name));
   $('bubble').hidden = true;
   if (name === 'graph') showGraph();
-  if (name === 'home') loadConversations();
+  if (name === 'home') { loadConversations(); loadMemories(); }
   if (name !== 'graph') refreshStatus();
 }
 // ponytail: screen switching is matched with regexes on short commands. Phase 3 replaces this with real
@@ -314,8 +314,11 @@ async function refreshStatus() {
     row('Voice', currentVoice() ? `Online · ${voiceName}` : 'No voice installed', currentVoice() ? '' : 'warn'),
     row('Wake word', wakeOn ? 'Listening' : 'Off', wakeOn ? '' : 'off'),
     row('Speech recognition', micSupported ? 'Ready' : 'Unavailable', micSupported ? '' : 'warn'),
-    row('Memory', 'Not built yet', 'off'),
+    row('Memory', settings.memory_enabled === '1' ? 'On' : 'Off', settings.memory_enabled === '1' ? '' : 'off'),
+    row('WhatsApp sending', 'Needs testing', 'off'),
+    row('Calendar, GitHub, Telegram', 'Not connected', 'off'),
   );
+  $('memory-enabled').checked = settings.memory_enabled === '1';
   const usedBy = name => ['fast', 'balanced', 'advanced'].filter(m => settings[`model_${m}`] === name).join(', ');
   $('llm').replaceChildren(...(status.models.length ? status.models : [modelNow]).map(name =>
     row(`${name}${usedBy(name) ? ` · ${usedBy(name)}` : ''}`,
@@ -349,6 +352,35 @@ async function refreshSystem() {
     document.querySelectorAll(`[data-stat-text="${key}"], [data-ring="${key}"] b`).forEach(el => { el.textContent = text; });
   }
 }
+// ---- Memory: everything JARVIS has saved about you, to inspect, correct or delete ---------------------
+async function loadMemories() {
+  const list = await api('/api/memories').catch(() => []);
+  const box = $('memories');
+  if (!list.length) { box.textContent = 'Nothing saved yet. Tell JARVIS something to remember.'; return; }
+  box.replaceChildren(...list.map(m => {
+    const el = row(m.text, '×', 'off'), [text, del] = el.children;
+    el.title = `${m.category}, saved ${m.created_at.slice(0, 10)}. Click the text to edit.`;
+    text.style.cursor = del.style.cursor = 'pointer';
+    text.style.whiteSpace = 'normal';
+    text.onclick = async () => {
+      const next = prompt('Edit this memory:', m.text);
+      if (!next || next.trim() === m.text) return;
+      await api(`/api/memories/${m.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: next.trim() }) })
+        .catch(e => alert(e.message));
+      loadMemories();
+    };
+    del.setAttribute('role', 'button');
+    del.setAttribute('aria-label', `Delete memory: ${m.text}`);
+    del.onclick = async () => {
+      if (!confirm(`Delete this memory? This cannot be undone.\n\n${m.text}`)) return;
+      await api(`/api/memories/${m.id}`, { method: 'DELETE' });
+      loadMemories();
+    };
+    return el;
+  }));
+}
+$('memory-enabled').onchange = e => putSettings({ memory_enabled: e.target.checked ? '1' : '0' }).then(refreshStatus);
+
 // ---- Gmail ------------------------------------------------------------------------------------
 async function refreshMail() {
   const m = await api('/api/mail').catch(() => null);

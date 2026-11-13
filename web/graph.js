@@ -3,7 +3,7 @@
 
 const TYPES = { // display order, label and color
   core: ['Core', '#3cdcff'], hub: ['Hubs', '#f5b942'], conversation: ['Conversations', '#4f8cff'],
-  model: ['Models', '#34d399'], mode: ['Modes', '#ff7ab6'], voice: ['Voices', '#b07cff'], speech: ['Speech', '#9aa7b8'],
+  memory: ['Memories', '#ffd166'], model: ['Models', '#34d399'], mode: ['Modes', '#ff7ab6'], voice: ['Voices', '#b07cff'], speech: ['Speech', '#9aa7b8'],
 };
 const SIZES = { core: 30, hub: 12 };
 let graph3d = null;

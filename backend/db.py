@@ -10,6 +10,7 @@ DEFAULT_SETTINGS = {
     "model_balanced": "gemma4:e4b-it-q4_K_M",
     "model_advanced": "qwen3.5:9b",
     "gmail_address": "",
+    "memory_enabled": "1",
 }
 
 SCHEMA = """
@@ -31,6 +32,12 @@ CREATE TABLE IF NOT EXISTS reminders (
     text TEXT NOT NULL,
     due TEXT NOT NULL,              -- local time, ISO format
     delivered INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS memories (  -- lasting facts about the user; the user can see, edit and delete all of them
+    id INTEGER PRIMARY KEY,
+    text TEXT NOT NULL UNIQUE,
+    category TEXT NOT NULL DEFAULT 'fact',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS audit (  -- every tool call JARVIS made, and whether the user approved it
     id INTEGER PRIMARY KEY,
@@ -95,6 +102,38 @@ def take_due_reminders(now: str) -> list[dict]:
         due = [dict(r) for r in con.execute("SELECT id, text, due FROM reminders WHERE delivered = 0 AND due <= ?", (now,))]
         con.executemany("UPDATE reminders SET delivered = 1 WHERE id = ?", [(r["id"],) for r in due])
         return due
+
+
+def add_memory(text: str, category: str) -> bool:
+    """Returns False if exactly this memory already exists."""
+    with db() as con:
+        return con.execute("INSERT OR IGNORE INTO memories (text, category) VALUES (?, ?)", (text, category)).rowcount == 1
+
+
+def list_memories() -> list[dict]:
+    with db() as con:
+        return [dict(r) for r in con.execute("SELECT id, text, category, created_at FROM memories ORDER BY id DESC")]
+
+
+def update_memory(mid: int, text: str) -> bool:
+    with db() as con:
+        return con.execute("UPDATE OR IGNORE memories SET text = ? WHERE id = ?", (text, mid)).rowcount == 1
+
+
+def delete_memories(ids: list[int]):
+    with db() as con:
+        con.executemany("DELETE FROM memories WHERE id = ?", [(i,) for i in ids])
+
+
+def search_messages(words: list[str], limit: int = 8) -> list[dict]:
+    """Past messages containing every word, newest first.
+    ponytail: a LIKE scan over all messages; switch to SQLite FTS5 when the history is large enough to feel it."""
+    where = " AND ".join("m.content LIKE ? ESCAPE '\\'" for _ in words)
+    like = ["%" + w.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%" for w in words]
+    with db() as con:
+        return [dict(r) for r in con.execute(
+            f"SELECT m.role, m.content, m.created_at, c.title FROM messages m JOIN conversations c ON c.id = m.conversation_id "
+            f"WHERE {where} ORDER BY m.id DESC LIMIT ?", (*like, limit))]
 
 
 def add_audit(tool: str, args: str, decision: str, ok: bool, summary: str):

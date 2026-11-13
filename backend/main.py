@@ -17,7 +17,7 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import db, llm, mail, tools, voice
+from . import db, desktop, llm, mail, tools, voice
 
 Mode = Literal["fast", "balanced", "advanced"]
 # ponytail: naive "last N messages" context window; make it token-aware / summarized in Phase 4 (memory).
@@ -91,6 +91,27 @@ class SettingsIn(BaseModel):
     model_fast: str | None = Field(None, min_length=1, max_length=200)
     model_balanced: str | None = Field(None, min_length=1, max_length=200)
     model_advanced: str | None = Field(None, min_length=1, max_length=200)
+    memory_enabled: Literal["0", "1"] | None = None
+
+
+class MemoryIn(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+
+
+MEMORY_PROMPT = """
+Memory: when the user tells you something lasting about themselves, the people in their life or their
+projects, or asks you to remember something, call remember with one short sentence. Do not save one-off
+requests. Use recall_conversations when they ask about earlier conversations, and forget when they ask you
+to forget something. Use what you know below when it is relevant, without reciting it.
+What you know about the user:
+{memories}"""
+
+
+def memory_prompt() -> str:
+    # ponytail: every memory (newest 40) goes into every prompt. Fine for one person's facts; rank by
+    # relevance (embeddings or FTS) once there are more than fit comfortably.
+    known = [f"- {m['text']}" for m in db.list_memories()[:40]]
+    return MEMORY_PROMPT.format(memories="\n".join(known) or "- (nothing saved yet)")
 
 
 def _line(event: dict) -> str:
@@ -108,7 +129,10 @@ async def chat(body: ChatIn):
     elif not db.conversation_exists(cid):
         raise HTTPException(404, "Conversation not found")
     db.add_message(cid, "user", body.message)
-    system = SYSTEM_PROMPT.format(now=datetime.now().strftime("%A %Y-%m-%d %H:%M")) + (SPOKEN if body.voice else "")
+    remembers = settings["memory_enabled"] == "1"
+    hidden = () if remembers else desktop.MEMORY_TOOLS  # memory off: the model neither sees nor can call these
+    system = (SYSTEM_PROMPT.format(now=datetime.now().strftime("%A %Y-%m-%d %H:%M"))
+              + (memory_prompt() if remembers else "") + (SPOKEN if body.voice else ""))
     messages = [{"role": "system", "content": system}]
     messages += [{"role": m["role"], "content": m["content"]} for m in db.get_messages(cid)[-HISTORY_LIMIT:]]
 
@@ -119,7 +143,7 @@ async def chat(body: ChatIn):
             for step in range(MAX_STEPS):
                 calls, said, thinking = [], [], False
                 # On the last step the tools are withheld, so the model has to answer with what it has.
-                offered = tools.schemas() if step < MAX_STEPS - 1 else None
+                offered = tools.schemas(exclude=hidden) if step < MAX_STEPS - 1 else None
                 async for chunk in llm.chat_stream(model, messages, think=mode != "fast", tools=offered):
                     msg = chunk.get("message", {})
                     if msg.get("thinking") and not thinking:
@@ -142,7 +166,9 @@ async def chat(body: ChatIn):
                     yield _line({"type": "tool", "name": name, "label": tools.label(name, args)})
                     decision, result = "auto", None
                     kwargs = tools.clean(name, args)
-                    if kwargs is not None and tools.REGISTRY[name].risk == "confirm":
+                    if name in hidden:
+                        decision, result = "blocked", tools.Result("Memory is switched off.", ok=False)
+                    elif kwargs is not None and tools.REGISTRY[name].risk == "confirm":
                         # Approval gate. It lives here, outside the model's reach: whatever the model writes,
                         # a confirm-level tool only runs after the user answers this exact preview.
                         try:
@@ -235,6 +261,23 @@ def mail_disconnect():
     global _inbox_cache
     mail.disconnect()
     _inbox_cache = (0.0, None)
+
+
+@app.get("/api/memories")
+def memories():
+    return db.list_memories()
+
+
+@app.put("/api/memories/{mid}")
+def edit_memory(mid: int, body: MemoryIn):
+    if not db.update_memory(mid, body.text.strip()):
+        raise HTTPException(404, "No such memory, or another memory already says exactly that")
+    return {"ok": True}
+
+
+@app.delete("/api/memories/{mid}", status_code=204)
+def delete_memory(mid: int):
+    db.delete_memories([mid])
 
 
 @app.get("/api/reminders/due")
@@ -370,6 +413,9 @@ async def graph():
         add(f"voice:{v}", v, "voice", "Piper voice for spoken replies.", "hub:voice")
     add("speech:whisper", f"Whisper {voice.WHISPER_MODEL}", "speech", "Turns your speech into text, on this laptop.", "hub:voice")
     add("speech:wake", "Wake word", "speech", 'Listens for "Hey JARVIS".', "hub:voice")
+    add("hub:memory", "Memory", "hub", "Lasting facts JARVIS knows about you.", "core")
+    for m in db.list_memories():
+        add(f"memory:{m['id']}", m["text"][:60], "memory", f"{m['category'].capitalize()}, saved {m['created_at'][:10]}: {m['text']}", "hub:memory")
     return {"nodes": nodes, "links": links}
 
 
