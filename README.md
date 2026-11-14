@@ -104,10 +104,10 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | 4. Agent and memory | Done |
 | 5. Integrations: calendar, GitHub | Done |
 | 6. Phone access | Planned |
-| 8. Polish: phone layout, long conversations, search fallbacks, news | Done |
 | 7. Repeating reminders, daily briefing, tray and background mode | Done |
 | 7. Wake word while the window is closed | Done |
 | 7. Briefing while the window is closed, website monitoring | Done |
+| 8. Polish: phone layout, long conversations, search fallbacks, news | Done |
 
 ## Layout
 
