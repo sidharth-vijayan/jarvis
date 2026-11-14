@@ -79,7 +79,12 @@ def start_server():
 
 
 def stop_server(server):
-    """The venv's python.exe is a launcher that starts the real interpreter as a child, so stop the whole tree."""
+    """Close the browser window properly first (killing it can sign you out of sites there), then stop
+    the whole tree: the venv's python.exe is a launcher that starts the real interpreter as a child."""
+    try:
+        urllib.request.urlopen(urllib.request.Request(URL + "/api/close-windows", method="POST"), timeout=15).close()
+    except OSError:
+        pass
     try:
         procs = psutil.Process(server.pid).children(recursive=True) + [psutil.Process(server.pid)]
     except psutil.Error:

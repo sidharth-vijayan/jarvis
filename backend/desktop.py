@@ -569,22 +569,6 @@ async def check_github(kind: str) -> Result:
                   summary=f"Read {len(items)} GitHub {kind}")
 
 
-# ---- WhatsApp -------------------------------------------------------------------------------------
-
-async def _whatsapp_preview(contact: str, message: str) -> str:
-    return f"Send this WhatsApp message.\n  To:       {contact}\n  Message:  {message}"
-
-
-@tool("Send a WhatsApp message to one of the user's contacts or groups. The user is shown the exact contact "
-      "and message and must approve before it is sent.",
-      label=lambda a: f'WhatsApp to {a.get("contact", "")}', risk="confirm", preview=_whatsapp_preview,
-      contact="The contact or group name, exactly as it is saved in WhatsApp",
-      message="The message, word for word as the user dictated it")
-async def send_whatsapp(contact: str, message: str) -> Result:
-    from . import whatsapp
-    return Result(f"The message was sent to {await whatsapp.send(contact, message)}.")
-
-
 # ---- Commands -------------------------------------------------------------------------------------
 # Refused outright, before the user is even asked. A blocklist can never be complete; the real safeguard is
 # that every command is shown to the user in full and runs only if they approve it.

@@ -11,4 +11,4 @@ sounddevice  # microphone for the tray's wake-word listener
 pypdf
 keyring  # stores the Gmail app password in Windows Credential Manager
 recurring-ical-events  # expands repeating calendar events; brings icalendar
-playwright  # drives the installed Edge for WhatsApp; no browser download needed
+playwright  # drives the installed Edge for browser tasks; no browser download needed

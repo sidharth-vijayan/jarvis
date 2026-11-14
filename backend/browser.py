@@ -191,3 +191,11 @@ async def type_text(n: int, text: str, enter: bool) -> str:
             await box.press("Enter")
             await _settle(await _page_())
         return await snapshot()
+
+
+async def close():
+    """Close the window properly, so sites signed in there stay signed in."""
+    global _context, _page
+    if _context:
+        await _context.close()
+    _context = _page = None

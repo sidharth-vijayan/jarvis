@@ -93,10 +93,6 @@ def demo():
         main.set_autostart(False, box)
         assert not (box / "JARVIS.lnk").exists()
 
-        # WhatsApp: the preview shows the exact contact and words; odd names are refused without opening anything.
-        assert asyncio.run(desktop._whatsapp_preview("Rahul", "running late")) == \
-            "Send this WhatsApp message.\n  To:       Rahul\n  Message:  running late"
-        assert run("send_whatsapp", contact='a"b', message="hi").ok is False
     finally:
         shutil.rmtree(box)
     print("desktop OK")

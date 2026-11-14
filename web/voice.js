@@ -172,7 +172,7 @@ async function record(startTimeout) {
 async function talk(startTimeout = 8000) {
   speaker.stop();
   recording?.cancel();
-  if (controller) { controller.abort(); await sleep(100); } // talking over a reply interrupts it
+  if (controller && !pendingConfirm) { controller.abort(); await sleep(100); } // talking over a reply interrupts it
   setState('listening');
   try {
     const blob = await record(startTimeout);
@@ -247,7 +247,7 @@ const wake = {
   hint() { return 'Say "Hey JARVIS"' + (this.closest ? ` · closest match ${Math.round(this.closest * 100)}%` : ''); },
   onServer(message) {
     if (this.mode !== 'waiting') return;
-    if (message === 'wake') { this.closest = 0; log('Wake word detected'); this.begin(3000, false); }
+    if (message === 'wake') { this.closest = 0; followUps = 0; log('Wake word detected'); this.begin(3000, false); }
     else if (message.startsWith('score:')) { // a near miss: show how close, so the threshold can be tuned
       this.closest = Math.max(this.closest, +message.slice(6));
       if (state === 'idle') setState('idle');
@@ -262,7 +262,8 @@ const wake = {
     micLevel = Math.min(1, rms * 8);
     this.frames.push(frame);
     if (rms > prefs.get('sensitivity', 0.02)) { this.spoke = true; this.lastVoice = now; }
-    if (this.spoke ? (now - this.lastVoice > 1200 || now - this.started > 30000) : now - this.started > this.startTimeout)
+    if (this.spoke && now - this.started > 30000) this.end('noise'); // nobody gives a 30-second command: background audio
+    else if (this.spoke ? now - this.lastVoice > 1200 : now - this.started > this.startTimeout)
       this.end(this.spoke ? 'send' : 'silence');
   },
   // Start recording a request. `prompted` = JARVIS has already asked, so silence just ends it.
@@ -270,13 +271,14 @@ const wake = {
     if (this.mode !== 'waiting') return;
     this.mode = 'request';
     speaker.stop();
-    if (controller) { controller.abort(); await sleep(100); } // the wake word interrupts a reply
+    // the wake word interrupts a reply, but not one waiting for a spoken yes or no to an approval
+    if (controller && !pendingConfirm) { controller.abort(); await sleep(100); }
     Object.assign(this, { frames: [], spoke: false, started: performance.now(), lastVoice: 0, startTimeout, prompted });
     recording = { stop: () => this.end('send'), cancel: () => this.end('cancel') };
     $('mic').classList.add('live');
     setState('listening');
   },
-  async end(how) { // 'send' | 'silence' | 'cancel'
+  async end(how) { // 'send' | 'silence' | 'noise' | 'cancel'
     if (this.mode !== 'request') return;
     const frames = this.frames, prompted = this.prompted;
     Object.assign(this, { mode: 'waiting', frames: [] });
@@ -290,6 +292,10 @@ const wake = {
         setState('idle');
         if (text) send(text, true);
       } catch (e) { setState('error', e.message); }
+    } else if (how === 'noise') {
+      followUps = MAX_FOLLOW_UPS; // stop listening on: the room is not quiet enough
+      log('Ignored 30 seconds of continuous speech: probably a video or someone else talking', 'warn');
+      if (state === 'listening') setState('idle');
     } else if (how === 'silence' && !prompted) { // "Hey Jarvis" and then nothing: ask, then listen again
       setState('idle');
       await speaker.say('Yes?');
@@ -299,13 +305,18 @@ const wake = {
 };
 
 // After a spoken reply to a spoken request, keep the conversation going without the wake word or a click.
+// Capped so that background speech (a video, a call) cannot keep JARVIS talking to itself in a loop.
+const MAX_FOLLOW_UPS = 2;
+let followUps = 0;
 function listenForFollowUp() {
-  if (state !== 'idle' || recording) return;
+  if (state !== 'idle' || recording || followUps >= MAX_FOLLOW_UPS) return;
+  followUps++;
   if (wake.mode === 'waiting') wake.begin(5000, true); else if (wake.mode === 'off') talk(5000);
 }
 
 // ---- Wiring and settings ----------------------------------------------------------------------
 $('mic').onclick = () => {
+  followUps = 0;
   if (recording) return recording.stop(); // second click: done talking
   if (wake.mode === 'waiting') wake.begin(8000, true); else if (wake.mode === 'off') talk();
 };

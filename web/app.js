@@ -318,7 +318,6 @@ async function refreshStatus() {
     row('Wake word', wakeOn ? 'Listening' : 'Off', wakeOn ? '' : 'off'),
     row('Speech recognition', micSupported ? 'Ready' : 'Unavailable', micSupported ? '' : 'warn'),
     row('Memory', settings.memory_enabled === '1' ? 'On' : 'Off', settings.memory_enabled === '1' ? '' : 'off'),
-    row('WhatsApp sending', 'Needs testing', 'off'),
     row('Gmail', settings.gmail_address ? 'Connected' : 'Not connected', settings.gmail_address ? '' : 'off'),
     row('Calendar', accounts.calendar ? 'Connected' : 'Not connected', accounts.calendar ? '' : 'off'),
     row('GitHub', accounts.github ? `Connected · ${accounts.github}` : 'Not connected', accounts.github ? '' : 'off'),
