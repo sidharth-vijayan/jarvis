@@ -40,6 +40,10 @@ You act through tools. When the user asks you to do something, call the tool; do
 - PC: open_app, open_website, search_files, open_file, read_document (to summarize a document, find it with
   search_files, then read_document), organize_folder, move_file, set_reminder, list_reminders, send_whatsapp,
   run_command (last resort).
+- Doing things on websites (searching a site, forms, sign-ups, downloads): always browser_open first, then
+  browser_type and browser_click using the numbers in its list. open_website only shows a site to the user.
+  Pressing buttons and downloads go to the user for approval. Never type passwords or card details; ask the
+  user to type them in the window. Each browser step returns the new page: answer from it, do not read_webpage the same page.
 - Watching pages: watch_website ("tell me when this page changes / when X appears"), list_watches, stop_watching.
 - Some tools (send_whatsapp, organize_folder, move_file, run_command) need the user's approval. The app
   handles that: it shows the user exactly what will happen and waits for their answer. So call the tool
@@ -53,7 +57,7 @@ SPOKEN = """
 The user is speaking to you and will hear your reply read aloud: answer in one to three short
 conversational sentences, with no Markdown, lists, code or emoji. Do not read web addresses or citation
 numbers aloud; the sources are shown on screen."""
-MAX_STEPS = 5  # model turns per request: each tool call costs one
+MAX_STEPS = 10  # model turns per request: each tool call costs one (browser tasks take several)
 MAX_AUDIO_BYTES = 25_000_000
 
 
@@ -247,7 +251,7 @@ async def chat(body: ChatIn):
                             preview = await tools.REGISTRY[name].preview(**kwargs)
                         except Exception as e:
                             decision, result = "blocked", tools.Result(f"Refused: {e}.", ok=False)
-                        else:
+                        if result is None and preview is not None:  # None: this particular call is harmless
                             ticket, answer = uuid.uuid4().hex, asyncio.get_running_loop().create_future()
                             _pending[ticket] = answer
                             yield _line({"type": "confirm", "id": ticket, "label": tools.label(name, args), "preview": preview})
@@ -267,6 +271,10 @@ async def chat(body: ChatIn):
                     yield _line({"type": "tool_result", "name": name, "ok": result.ok, "decision": decision,
                                  "summary": f"Read {len(result.sources)} page(s)" if result.sources
                                  else result.summary or result.text.splitlines()[0][:160]})
+                    if name.startswith("browser_") and result.ok:  # only the newest page fits the 8k context
+                        for m in messages:
+                            if m["role"] == "tool" and m.get("tool_name", "").startswith("browser_"):
+                                m["content"] = "(an earlier state of the page, replaced by the newer one below)"
                     messages.append({"role": "tool", "tool_name": name, "content": result.text})
             if sources:  # the pages that were really fetched, listed by the server rather than by the model
                 block = "\n\nSources:\n" + "\n".join(f"- [{s['title'][:90]}]({s['url']})" for s in sources[:6])

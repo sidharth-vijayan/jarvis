@@ -26,6 +26,9 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
 - **Google Calendar and GitHub, read-only**: "what's on this week?", "my open pull requests", "how many
   contributions this year?". Today's events are part of the briefing. Connect both in Settings: the calendar's
   secret iCal link and a read-only GitHub token, both stored in Windows Credential Manager.
+- **Browser tasks**: "search Wikipedia for X", "fill in this form", "download the report from <site>". JARVIS
+  drives its own Edge window you can watch. Following links is automatic; pressing buttons, submitting and
+  downloading wait for your approval. It never types passwords or card details, and leaves CAPTCHAs to you.
 - **WhatsApp** messages through WhatsApp Web: built, but sending is not yet tested with a linked account.
 - **Three reasoning modes**: Fast and Balanced (Gemma 4 E4B), Advanced (Qwen 3.5 9B).
 - **Three screens**: the orb (default), a homescreen dashboard, and a 3D graph of what JARVIS knows about.
@@ -96,7 +99,7 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | 2. Voice: speech in and out, wake word | Done |
 | 3. Web search, desktop control, reminders, approvals | Done |
 | 3. WhatsApp: verify sending with a linked phone | Left |
-| 3. General browser automation (forms, downloads) | Left |
+| 3. General browser automation (forms, downloads) | Done |
 | Gmail: read and summarize mail | Done |
 | 4. Agent and memory | Done |
 | 5. Integrations: calendar, GitHub | Done |
@@ -109,7 +112,7 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 
 | Path | What it is |
 |---|---|
-| `backend/` | FastAPI server: chat and agent loop (`main.py`), tool registry (`tools.py`), web (`web.py`), PC tools (`desktop.py`), WhatsApp (`whatsapp.py`), Ollama (`llm.py`), speech (`voice.py`), SQLite (`db.py`) |
+| `backend/` | FastAPI server: chat and agent loop (`main.py`), tool registry (`tools.py`), web (`web.py`), PC tools (`desktop.py`), browser (`browser.py`), WhatsApp (`whatsapp.py`), Ollama (`llm.py`), speech (`voice.py`), SQLite (`db.py`) |
 | `web/` | The interface in plain HTML, CSS and JavaScript, no build step |
 | `jarvis.pyw` | Launcher: starts the server and opens the app window |
 | `tests/` | Runnable checks: `python -m tests.test_backend`, `tests.test_voice`, `tests.test_wake` |

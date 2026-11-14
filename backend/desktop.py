@@ -89,7 +89,8 @@ async def open_app(name: str) -> Result:
     return Result(f"Opened {app['Name']}.")
 
 
-@tool("Open a website in the user's browser for them to look at.",
+@tool("Only show a website to the user in their own browser; you get nothing back from it. To search a site, "
+      "fill a form, click or read anything on it yourself, use browser_open instead.",
       label=lambda a: f'Opening {a.get("url", "")}', url="The address, starting with http:// or https://")
 async def open_website(url: str) -> Result:
     if not re.match(r"https?://[^\s]+$", url):
@@ -377,6 +378,69 @@ async def read_email(id: str) -> Result:
         return Result(f"There is no email with id {id}.", ok=False)
     return Result(f"{MAIL_NOTE}{m['date']} | From: {m['from']} | Subject: {m['subject']}\n{m['text'][:7000]}",
                   summary=f"Read: {m['subject'][:80]}")
+
+
+# ---- Browser (a visible Edge window JARVIS drives) -------------------------------------------------
+def _number(n: str) -> int:
+    if not n.strip().isdigit():
+        raise ValueError("use the element's number from the page description")
+    return int(n)
+
+
+async def _browser(action) -> Result:
+    try:
+        return Result(await action, summary="Browser page read")
+    except Exception as e:
+        return Result(f"Browser action failed: {e or type(e).__name__}", ok=False)
+
+
+@tool("Open a web page in JARVIS's own browser window to act on it: search a site, fill a form, sign up, "
+      "book, download a file. Always call this first, before browser_type or browser_click. Returns the page text and a numbered list of things to click or type into. "
+      "For just reading or summarizing a page, use read_webpage instead.",
+      label=lambda a: f'Opening {a.get("url", "")}', url="The page's web address")
+async def browser_open(url: str) -> Result:
+    from . import browser
+    return await _browser(browser.open_page(url))
+
+
+async def _click_preview(number: str):
+    from . import browser
+    return browser.needs_approval(_number(number))
+
+
+@tool("Click a link, button, checkbox or tab in the browser window, by its number from the page description. "
+      "Buttons that submit or send something, and downloads, are shown to the user for approval first.",
+      label=lambda a: f'Clicking [{a.get("number", "")}]', risk="confirm", preview=_click_preview,
+      number="The element's number")
+async def browser_click(number: str) -> Result:
+    from . import browser
+    try:
+        n = _number(number)
+    except ValueError as e:
+        return Result(str(e), ok=False)
+    return await _browser(browser.click(n))
+
+
+async def _type_preview(number: str, text: str, press_enter: str):
+    from . import browser
+    e = browser.element(_number(number))
+    if press_enter.lower() not in ("yes", "true"):
+        return None  # only fills the field; nothing is sent
+    return f'Type "{text}" into "{e["label"] or "field " + number}" and press Enter, which may submit the form.' + browser.form_summary()
+
+
+@tool("Type into a text field (or choose an option in a dropdown) in the browser window, by its number. "
+      "JARVIS cannot type passwords or card details; the user types those.",
+      label=lambda a: f'Typing into [{a.get("number", "")}]', risk="confirm", preview=_type_preview,
+      number="The field's number", text="What to type, or the option to choose",
+      press_enter="yes to press Enter afterwards (for example to search), otherwise no")
+async def browser_type(number: str, text: str, press_enter: str) -> Result:
+    from . import browser
+    try:
+        n = _number(number)
+    except ValueError as e:
+        return Result(str(e), ok=False)
+    return await _browser(browser.type_text(n, text, press_enter.lower() in ("yes", "true")))
 
 
 # ---- Website monitoring ---------------------------------------------------------------------------
