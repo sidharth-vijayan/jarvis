@@ -21,8 +21,23 @@ from pydantic import BaseModel, Field
 from . import accounts, db, desktop, llm, mail, tools, voice
 
 Mode = Literal["fast", "balanced", "advanced"]
-# ponytail: naive "last N messages" context window; make it token-aware / summarized in Phase 4 (memory).
-HISTORY_LIMIT = 40
+# The model's 8k-token context also holds ~4k tokens of instructions and tool descriptions, plus tool results.
+# If it overflows, Ollama silently drops the start, which is the instructions, so earlier messages are cut first.
+# ponytail: characters as a stand-in for tokens (~4 per token in English); older turns are dropped, not summarized.
+HISTORY_CHARS = 6000
+OLD_MESSAGE_CHARS = 1500  # an older long reply is shortened, so one essay does not push out everything else
+
+
+def recent_history(cid: int) -> list[dict]:
+    """The newest messages that fit HISTORY_CHARS, oldest first. The newest message is always kept in full."""
+    kept, used = [], 0
+    for i, m in enumerate(reversed(db.get_messages(cid))):
+        text = m["content"] if i == 0 else m["content"][:OLD_MESSAGE_CHARS]
+        used += len(text)
+        if i and used > HISTORY_CHARS:
+            break
+        kept.append({"role": m["role"], "content": text})
+    return kept[::-1]
 
 SYSTEM_PROMPT = """You are JARVIS, a personal AI assistant running locally on the user's Windows laptop.
 Be concise, direct and courteous, with occasional dry wit that is never at the user's expense.
@@ -30,7 +45,9 @@ Use Markdown only when it helps.
 Current date and time: {now}.
 
 You act through tools. When the user asks you to do something, call the tool; do not describe what you would do.
-- Web: web_search for anything current or anything you are not sure of; read_webpage when given a link.
+- News: news_search to catch up on news ("latest Indian news", "AI news this week"; it handles country and
+  time range). For one specific fact (who won, a score, a result, a price), use web_search instead.
+- Web: web_search for anything else current or anything you are not sure of; read_webpage when given a link.
   Cite the pages you used as [1], [2].
 - Mail: check_email lists Gmail messages (use the query is:unread for new mail); read_email reads one in
   full. You can only read mail, not send, delete or mark it. Mention sender and subject when you summarize.
@@ -210,7 +227,7 @@ async def chat(body: ChatIn):
               + (memory_prompt() if remembers else "") + (SPOKEN if body.voice else "")
               + (await run_in_threadpool(briefing_context) if body.briefing else ""))
     messages = [{"role": "system", "content": system}]
-    messages += [{"role": m["role"], "content": m["content"]} for m in db.get_messages(cid)[-HISTORY_LIMIT:]]
+    messages += recent_history(cid)
 
     async def stream():
         yield _line({"type": "start", "conversation_id": cid, "model": model, "mode": mode})

@@ -294,7 +294,7 @@ const row = (label, value, tone = '') => {
   return el;
 };
 async function refreshStatus() {
-  const [status, settings] = await Promise.all([api('/api/status'), api('/api/settings')]);
+  const [status, settings, accounts] = await Promise.all([api('/api/status'), api('/api/settings'), api('/api/accounts').catch(() => ({}))]);
   $('mode').value = settings.mode;
   const modelNow = settings[`model_${settings.mode}`];
   const wakeOn = wake.mode !== 'off';
@@ -319,7 +319,9 @@ async function refreshStatus() {
     row('Speech recognition', micSupported ? 'Ready' : 'Unavailable', micSupported ? '' : 'warn'),
     row('Memory', settings.memory_enabled === '1' ? 'On' : 'Off', settings.memory_enabled === '1' ? '' : 'off'),
     row('WhatsApp sending', 'Needs testing', 'off'),
-    row('Calendar, GitHub, Telegram', 'Not connected', 'off'),
+    row('Gmail', settings.gmail_address ? 'Connected' : 'Not connected', settings.gmail_address ? '' : 'off'),
+    row('Calendar', accounts.calendar ? 'Connected' : 'Not connected', accounts.calendar ? '' : 'off'),
+    row('GitHub', accounts.github ? `Connected · ${accounts.github}` : 'Not connected', accounts.github ? '' : 'off'),
   );
   $('memory-enabled').checked = settings.memory_enabled === '1';
   const usedBy = name => ['fast', 'balanced', 'advanced'].filter(m => settings[`model_${m}`] === name).join(', ');

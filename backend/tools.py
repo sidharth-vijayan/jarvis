@@ -84,8 +84,8 @@ async def run(name: str, args) -> Result:
 
 # ---- Web ----------------------------------------------------------------------------------------
 
-@tool("Search the internet and read the top pages. Use for news, current events, facts you are unsure of, "
-      "prices, and research. Returns the text of the pages that could be opened.",
+@tool("Search the internet and read the top pages. Use for facts you are unsure of, prices, how-tos and "
+      "research. Not for news headlines: use news_search for those. Returns the text of the pages that could be opened.",
       label=lambda a: f'Searching the web for "{a.get("query", "")}"',
       query="What to search for, as you would type it into a search engine")
 async def web_search(query: str) -> Result:
@@ -106,6 +106,30 @@ async def web_search(query: str) -> Result:
         lines.append("\nOther results, NOT opened (snippets only):")
     lines += [f"- {r['title']} ({r['url']}): {r['snippet']}" for r in rest]
     return Result(UNTRUSTED + "\n".join(lines), [{"title": p["title"], "url": p["url"]} for p in pages])
+
+
+@tool("Latest news headlines from Google News, with source and time. Use for any news request: 'latest news', "
+      "'Indian news today', 'tech/AI news this week', 'news about Tesla'. Use web_search instead for anything that "
+      "is not news.",
+      label=lambda a: f'Getting news: {a.get("topic", "")} {a.get("country", "")} {a.get("period", "")}'.strip(),
+      topic="What the news is about, like AI, cricket, Tesla, or the word top for the main headlines. For a "
+            "place without its own edition (UAE, Dubai, Kerala), put the place here",
+      country="Two-letter country edition: IN India, US, GB UK, AU, CA, SG, or the word any",
+      period="hour, day, week, month, or any")
+async def news_search(topic: str, country: str, period: str) -> Result:
+    topic = "" if topic.lower() in ("top", "any", "all", "latest", "news") else topic
+    country = "" if country.lower() in ("any", "world", "global") or len(country) != 2 else country
+    try:
+        found = await web.news(topic, country, "" if period.lower() == "any" else period)
+    except (httpx.HTTPError, ValueError) as e:  # ValueError: the feed was not valid XML
+        return Result(f"Could not get the news ({e or type(e).__name__}).", ok=False)
+    if not found:
+        return Result("No news found for that. Try a broader topic or a longer period.", ok=False)
+    lines = [f"Headlines (local time), fetched {date.today().isoformat()}. Summarize them, grouped "
+             "by theme; cite as [1], [2]."]
+    lines += [f"[{i}] {n['published']} | {n['source']} | {n['title']}" for i, n in enumerate(found, 1)]
+    return Result(UNTRUSTED + "\n".join(lines), [{"title": f"{n['source']}: {n['title']}", "url": n["url"]} for n in found[:6]],
+                  summary=f"Read {len(found)} headlines")
 
 
 @tool("Open one web page and read its text. Use when the user gives a link, or to read a page in full.",

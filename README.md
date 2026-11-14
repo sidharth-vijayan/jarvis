@@ -10,8 +10,10 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
 - **Chat** with a local model through Ollama, streamed as it is written. Conversations are saved.
 - **Voice**: say "Hey JARVIS" and ask, in one breath or after it answers "Yes?". Replies are spoken, and it
   listens a few seconds for a follow-up. The wake word also interrupts a reply.
-- **Web search** with no API key: searches DuckDuckGo, reads the top pages, answers with links to the pages
-  it actually opened. "Summarize <link>" works too.
+- **Web search** with no API key: searches DuckDuckGo (falling back to Yahoo when it is blocked), reads the
+  top pages, answers with links to the pages it actually opened. "Summarize <link>" works too.
+- **News**: "latest Indian news", "AI news this week", "anything about Dubai today". Google News headlines
+  by country, topic and time range, summarized with sources.
 - **PC control**: open apps and websites, find files, open and summarize documents (PDF, Word, text),
   tidy a folder, move files, set reminders.
 - **Approval before anything consequential**: moving files, running a command or sending a message shows
@@ -104,6 +106,7 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | 4. Agent and memory | Done |
 | 5. Integrations: calendar, GitHub | Done |
 | 6. Phone access | Planned |
+| 8. Polish: phone layout, long conversations, search fallbacks, news | Done |
 | 7. Repeating reminders, daily briefing, tray and background mode | Done |
 | 7. Wake word while the window is closed | Done |
 | 7. Briefing while the window is closed, website monitoring | Done |
@@ -115,7 +118,7 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | `backend/` | FastAPI server: chat and agent loop (`main.py`), tool registry (`tools.py`), web (`web.py`), PC tools (`desktop.py`), browser (`browser.py`), WhatsApp (`whatsapp.py`), Ollama (`llm.py`), speech (`voice.py`), SQLite (`db.py`) |
 | `web/` | The interface in plain HTML, CSS and JavaScript, no build step |
 | `jarvis.pyw` | Launcher: starts the server and opens the app window |
-| `tests/` | Runnable checks: `python -m tests.test_backend`, `tests.test_voice`, `tests.test_wake` |
+| `tests/` | Runnable checks, one file per area: `python -m tests.test_backend` (and `test_voice`, `test_wake`, `test_desktop`, `test_browser`, ...) |
 | `data/` | Created at runtime: conversations, voices, logs. Not in git |
 
 ## Configuration

@@ -211,15 +211,18 @@ body[data-state="error"] #orb-status { color: var(--error); }
   body { overflow: auto; height: auto; min-height: 100%; padding: 10px; }
   #topbar { grid-template-columns: 1fr; justify-items: center; }
   #view-orb { grid-template-columns: 1fr; }
-  #view-orb .center { order: -1; }
-  #viz { width: min(100%, 300px); }
+  #view-orb .center { order: -2; }
+  #view-orb .col:last-child { order: -1; } /* transcript right under the orb; system panels after it */
+  #viz { width: min(70vw, 230px); }
+  .title h1 { font-size: 17px; letter-spacing: .2em; }
+  .title p { letter-spacing: .25em; }
   .term { height: 180px; }
   #view-home { grid-template-columns: 1fr; grid-template-rows: none; grid-template-areas: "hero" "core" "convs" "quick" "monitor" "llm" "feed" "later"; }
   .hero { height: 260px; }
   .graph-left, .graph-right { position: static; width: auto; max-height: none; margin: 8px; }
   #view-graph { min-height: 70vh; }
   #graph { position: relative; height: 50vh; }
-  #composer { position: sticky; bottom: 8px; }
+  #composer { position: sticky; bottom: 8px; background: #08121f; } /* opaque: text scrolls under it */
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

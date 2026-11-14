@@ -89,22 +89,101 @@ async def fetch(client: httpx.AsyncClient, url: str, min_chars: int = 200) -> di
         return None
 
 
-async def search(client: httpx.AsyncClient, query: str, limit: int = 6) -> list[dict]:
-    """DuckDuckGo results as [{title, url, snippet}]. Raises httpx.HTTPError if the search itself fails."""
-    r = await client.post("https://html.duckduckgo.com/html/", data={"q": query})
-    r.raise_for_status()
-    clean = lambda s: html.unescape(re.sub(r"<.*?>", "", s)).strip()  # noqa: E731
+def _clean(s: str) -> str:
+    return html.unescape(re.sub(r"<.*?>", "", s, flags=re.S)).strip()
+
+
+def _parse_html(page: str) -> list[dict]:
     results = []
-    for block in r.text.split('class="result results_links')[1:]:
+    for block in page.split('class="result results_links')[1:]:
         link = re.search(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.S)
         if not link:
             continue
         target = re.search(r"uddg=([^&\"]+)", link.group(1))
         url = urllib.parse.unquote(target.group(1)) if target else html.unescape(link.group(1))
         snippet = re.search(r'class="result__snippet"[^>]*>(.*?)</a>', block, re.S)
-        if url.startswith("http") and "duckduckgo.com/y.js" not in url:  # skip ads
-            results.append({"title": clean(link.group(2)), "url": url, "snippet": clean(snippet.group(1)) if snippet else ""})
-    return results[:limit]
+        results.append({"title": _clean(link.group(2)), "url": url, "snippet": _clean(snippet.group(1)) if snippet else ""})
+    return results
+
+
+def _parse_lite(page: str) -> list[dict]:
+    links = re.findall(r"<a[^>]*href=\"([^\"]+)\"[^>]*class='result-link'[^>]*>(.*?)</a>", page, re.S)
+    snippets = re.findall(r"<td class='result-snippet'>(.*?)</td>", page, re.S)
+    return [{"title": _clean(t), "url": html.unescape(u), "snippet": _clean(snippets[i]) if i < len(snippets) else ""}
+            for i, (u, t) in enumerate(links)]
+
+
+def _parse_yahoo(page: str) -> list[dict]:
+    results = []
+    for block in page.split("algo-sr")[1:]:
+        link = re.search(r'href="([^"]*/RU=([^/"]+)/[^"]*)"', block)
+        title = re.search(r"<h3[^>]*>(.*?)</h3>", block, re.S)
+        snippet = re.search(r'class="compText[^"]*"[^>]*>(.*?)</div>', block, re.S)
+        if link and title:
+            results.append({"title": re.sub(r"^.*?› [^ ]+ ?", "", _clean(title.group(1))) or _clean(title.group(1)),
+                            "url": urllib.parse.unquote(link.group(2)), "snippet": _clean(snippet.group(1)) if snippet else ""})
+    return results
+
+
+# Tried in order. Each sometimes answers automated requests with a "prove you're human" page instead of
+# results, especially after many searches in a row; the next one is tried when a page gives no results.
+ENGINES = (("POST", "https://html.duckduckgo.com/html/", "q", _parse_html),
+           ("POST", "https://lite.duckduckgo.com/lite/", "q", _parse_lite),
+           ("GET", "https://search.yahoo.com/search", "p", _parse_yahoo))
+
+
+async def search(client: httpx.AsyncClient, query: str, limit: int = 6) -> list[dict]:
+    """Web results as [{title, url, snippet}]. Raises httpx.HTTPError only if every engine fails."""
+    results, error = [], None
+    for method, endpoint, field, parse in ENGINES:
+        try:
+            for attempt in range(2):  # one retry: these pages give the odd server error
+                r = await (client.post(endpoint, data={field: query}) if method == "POST" else client.get(endpoint, params={field: query}))
+                if r.status_code < 500:
+                    break
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            error = e
+            continue
+        results = [x for x in parse(r.text) if x["url"].startswith("http") and "duckduckgo.com/y.js" not in x["url"]]  # no ads
+        if results:
+            return results[:limit]
+    if error:
+        raise error
+    return []
+
+
+# Google News RSS: free, keyless, and filters by country and time, which plain web search does badly.
+NEWS_PERIODS = {"hour": "1h", "day": "1d", "week": "7d", "month": "30d"}
+
+
+async def news(topic: str, country: str, period: str, limit: int = 12) -> list[dict]:
+    """Newest headlines as [{title, source, published, url}]. topic '' = top stories; country is a two-letter
+    code such as IN, US, GB, AE ('' = US English edition); period is hour, day, week or month ('' = any)."""
+    import xml.etree.ElementTree as ET
+    from email.utils import parsedate_to_datetime
+    cc = (country or "US").upper()
+    params = {"hl": f"en-{cc}", "gl": cc, "ceid": f"{cc}:en"}
+    when = NEWS_PERIODS.get(period.lower(), "")
+    if topic:
+        url, params["q"] = "https://news.google.com/rss/search", f"{topic} when:{when}" if when else topic
+    else:  # top stories are current by definition; a time filter needs a search term
+        url = "https://news.google.com/rss"
+    async with _client() as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+    found = []
+    for item in ET.fromstring(r.content).iter("item"):
+        title, source = item.findtext("title", ""), item.findtext("source", "")
+        if source and title.endswith(" - " + source):
+            title = title[: -len(source) - 3]
+        try:
+            published = parsedate_to_datetime(item.findtext("pubDate", "")).astimezone().strftime("%Y-%m-%d %H:%M")
+        except (TypeError, ValueError):
+            published = ""
+        found.append({"title": title, "source": source, "published": published, "url": item.findtext("link", "")})
+    # top stories come ranked by importance; searches are put newest first
+    return (sorted(found, key=lambda n: n["published"], reverse=True) if topic else found)[:limit]
 
 
 async def search_and_read(query: str, pages: int = 3) -> tuple[list[dict], list[dict]]:
