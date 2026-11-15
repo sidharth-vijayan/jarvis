@@ -7,8 +7,11 @@ import wave
 from pathlib import Path
 
 VOICE_DIR = Path(os.environ.get("JARVIS_VOICES", Path(__file__).parent.parent / "data" / "voices"))
-# Measured on this laptop for a 3 s clip: base.en 0.65 s, small.en 2.0 s. small.en is more accurate.
-WHISPER_MODEL = os.environ.get("JARVIS_WHISPER_MODEL", "small.en")
+# Measured on this laptop. Plugged in, for a 3 s clip: base.en 0.65 s, small.en 2.0 s. On battery Windows throttles
+# the CPU and small.en took 5-17 s for a 1 s clip, base.en 1.5-2 s. So: the accurate model when plugged in, the fast
+# one on battery. Setting JARVIS_WHISPER_MODEL uses that one model always.
+WHISPER_PLUGGED, WHISPER_BATTERY = "small.en", "base.en"
+WHISPER_MODEL = os.environ.get("JARVIS_WHISPER_MODEL")
 # Wake-word score (0..1) needed to trigger. Lower = triggers more easily, with more false alarms.
 WAKE_THRESHOLD = float(os.environ.get("JARVIS_WAKE_THRESHOLD", "0.5"))
 WAKE_FRAME_BYTES = 2560  # 80 ms of 16 kHz 16-bit mono audio, the frame size the detector expects
@@ -29,7 +32,7 @@ class WakeDetector:
         self.model.reset()
 
 _stt_lock, _tts_lock = threading.Lock(), threading.Lock()
-_whisper = None
+_whisper = {}  # model name -> loaded model
 _voices = {}
 _warming = False
 
@@ -38,17 +41,29 @@ def voices() -> list[str]:
     return sorted(p.name.removesuffix(".onnx") for p in VOICE_DIR.glob("*.onnx"))
 
 
-def _load_whisper():
-    global _whisper
+def whisper_model_name() -> str:
+    if WHISPER_MODEL:
+        return WHISPER_MODEL
+    import psutil
+    battery = psutil.sensors_battery()
+    return WHISPER_BATTERY if battery and not battery.power_plugged else WHISPER_PLUGGED
+
+
+def _load_whisper(name: str | None = None):
+    name = name or whisper_model_name()
     with _stt_lock:
-        if _whisper is None:
+        if name not in _whisper:
             from faster_whisper import WhisperModel
-            _whisper = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8", cpu_threads=8)
-        return _whisper
+            _whisper[name] = WhisperModel(name, device="cpu", compute_type="int8", cpu_threads=8)
+        return _whisper[name]
 
 
 def _warm_all():
-    _load_whisper()
+    if WHISPER_MODEL:
+        _load_whisper()
+    else:  # both, so plugging in or unplugging never makes the next request wait for a load
+        _load_whisper(WHISPER_BATTERY)
+        _load_whisper(WHISPER_PLUGGED)
     installed = voices()
     default = next((v for v in installed if "alan" in v), installed[0] if installed else None)  # same pick as voice.js
     if default:

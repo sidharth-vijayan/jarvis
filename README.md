@@ -127,7 +127,7 @@ Optional environment variables:
 |---|---|---|
 | `JARVIS_PORT` | `8765` | Local port |
 | `JARVIS_OLLAMA_URL` | `http://127.0.0.1:11434` | Where Ollama listens |
-| `JARVIS_WHISPER_MODEL` | `small.en` | `base.en` is about 3x faster, less accurate |
+| `JARVIS_WHISPER_MODEL` | `small.en` plugged in, `base.en` on battery | Set it to always use one model. On battery Windows slows the CPU, so the smaller model keeps replies quick |
 | `JARVIS_WAKE_THRESHOLD` | `0.5` | Lower triggers the wake word more easily |
 | `JARVIS_KEEP_ALIVE` | `30m` | How long the model stays in memory after use |
 | `JARVIS_HOTKEY` | `ctrl+alt+j` | Global shortcut that opens the window |
