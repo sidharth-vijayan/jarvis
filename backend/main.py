@@ -249,13 +249,14 @@ async def execute(name: str, args: dict, hidden: tuple, out: list):
 # "Open Spotify" / "launch WhatsApp" goes straight to the app, without the model: it is instant, and the model
 # sometimes opens the website or a browser instead. Only a clear installed-app name qualifies; anything else
 # ("open google.com", "open my notes") still goes to the model.
+# Searched for anywhere in a short request, so "can you also open Chrome?" counts as well as "open Chrome".
 OPEN_COMMAND = re.compile(
-    r"^\W*(?:(?:ok(?:ay)?|hey|jarvis|please|can you|could you|would you)\W+)*(?:open|launch|start|run)\s+"
-    r"(?:up\s+)?(?:the\s+|my\s+)?(?P<app>.+?)(?:\s+app(?:lication)?)?(?:\s+(?:please|for me))?\W*$", re.I)
+    r"\b(?:open|launch|start|run)\s+(?:up\s+)?(?:the\s+|my\s+)?(?P<app>[^,.!?]+?)"
+    r"(?:\s+(?:app|application|browser|please|for me|now))*\W*$", re.I)
 
 
 async def app_to_open(text: str) -> str | None:
-    m = OPEN_COMMAND.match(text)
+    m = OPEN_COMMAND.search(text) if len(text) <= 80 else None
     if not m:
         return None
     app = desktop.match_app(m["app"], await asyncio.to_thread(desktop.installed_apps), strict=True)

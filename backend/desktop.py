@@ -59,7 +59,7 @@ ALIASES = {"vs code": "visual studio code", "vscode": "visual studio code", "chr
            "edge": "microsoft edge", "explorer": "file explorer", "files": "file explorer", "calc": "calculator",
            # how speech recognition tends to write some app names
            "what's app": "whatsapp", "whats app": "whatsapp", "what's up": "whatsapp", "whatsup": "whatsapp",
-           "spot if i": "spotify", "spotty fy": "spotify"}
+           "spot if i": "spotify", "spotty fy": "spotify", "brief": "brave", "braves": "brave", "grave": "brave"}
 
 
 def installed_apps() -> list[dict]:
@@ -89,7 +89,8 @@ def match_app(name: str, apps: list[dict], strict: bool = False) -> dict | None:
     return None
 
 
-@tool("Open an application installed on this PC, for example Spotify, Notepad or VS Code.",
+@tool("Open any application installed on this PC, including web browsers: Chrome, Brave, Edge, Spotify, "
+      "WhatsApp, Notepad, VS Code and so on. Use this whenever the user asks to open or launch an app or a browser.",
       label=lambda a: f'Opening {a.get("name", "")}', name="The application's name")
 async def open_app(name: str) -> Result:
     apps = await asyncio.to_thread(installed_apps)

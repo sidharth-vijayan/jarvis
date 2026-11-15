@@ -14,11 +14,14 @@ def check():
     for said, app in [("Open WhatsApp.", "WhatsApp"), ("open whats app", "WhatsApp"), ("open what's up", "WhatsApp"),
                       ("Hey Jarvis, open Brave", "Brave"), ("Can you launch spotify?", "Spotify"),
                       ("Open the Spotify app please", "Spotify"), ("open chrome", "Google Chrome"),
-                      ("start VS Code", "Visual Studio Code"), ("open snipping", "Snipping Tool")]:
+                      ("start VS Code", "Visual Studio Code"), ("open snipping", "Snipping Tool"),
+                      ("Can you also open Google Chrome?", "Google Chrome"), ("Can you open the brief?", "Brave"),
+                      ("open Brave browser", "Brave"), ("Hey, just open spotify for me now", "Spotify")]:
         assert opens(said) == app, (said, opens(said))
     # not a clear app name: left to the model, which can open websites, folders and so on
     for said in ("open google.com", "open my documents folder", "start a timer for 5 minutes", "open s",
-                 "open the pod bay doors", "what's up", "send a message to Sam"):
+                 "open the pod bay doors", "what's up", "send a message to Sam", "open spotify and play some music",
+                 "can you run a quick search on python", "I was talking about Brave browser"):
         assert opens(said) is None, (said, opens(said))
     print("open app OK")
 
