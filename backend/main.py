@@ -246,6 +246,22 @@ async def execute(name: str, args: dict, hidden: tuple, out: list):
     out.append(result)
 
 
+# "Open Spotify" / "launch WhatsApp" goes straight to the app, without the model: it is instant, and the model
+# sometimes opens the website or a browser instead. Only a clear installed-app name qualifies; anything else
+# ("open google.com", "open my notes") still goes to the model.
+OPEN_COMMAND = re.compile(
+    r"^\W*(?:(?:ok(?:ay)?|hey|jarvis|please|can you|could you|would you)\W+)*(?:open|launch|start|run)\s+"
+    r"(?:up\s+)?(?:the\s+|my\s+)?(?P<app>.+?)(?:\s+app(?:lication)?)?(?:\s+(?:please|for me))?\W*$", re.I)
+
+
+async def app_to_open(text: str) -> str | None:
+    m = OPEN_COMMAND.match(text)
+    if not m:
+        return None
+    app = desktop.match_app(m["app"], await asyncio.to_thread(desktop.installed_apps), strict=True)
+    return app["Name"] if app else None
+
+
 @app.post("/api/chat")
 async def chat(body: ChatIn):
     settings = db.get_settings()
@@ -269,6 +285,17 @@ async def chat(body: ChatIn):
         yield _line({"type": "start", "conversation_id": cid, "model": model, "mode": mode})
         parts, sources, stats = [], [], {}
         try:
+            app_name = None if body.briefing else await app_to_open(body.message)
+            if app_name:
+                args = {"name": app_name}
+                yield _line({"type": "tool", "name": "open_app", "label": tools.label("open_app", args)})
+                out: list = []
+                async for line in execute("open_app", args, hidden, out):
+                    yield line
+                parts.append(out[0].text)
+                yield _line({"type": "token", "text": out[0].text})
+                yield _line({"type": "done"})
+                return
             for step in range(MAX_STEPS):
                 calls, said, thinking = [], [], False
                 # On the last step the tools are withheld, so the model has to answer with what it has.

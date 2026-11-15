@@ -56,7 +56,10 @@ def resolve(path: str) -> Path:
 # ---- Apps and websites --------------------------------------------------------------------------
 _apps = (0.0, [])
 ALIASES = {"vs code": "visual studio code", "vscode": "visual studio code", "chrome": "google chrome",
-           "edge": "microsoft edge", "explorer": "file explorer", "files": "file explorer", "calc": "calculator"}
+           "edge": "microsoft edge", "explorer": "file explorer", "files": "file explorer", "calc": "calculator",
+           # how speech recognition tends to write some app names
+           "what's app": "whatsapp", "whats app": "whatsapp", "what's up": "whatsapp", "whatsup": "whatsapp",
+           "spot if i": "spotify", "spotty fy": "spotify"}
 
 
 def installed_apps() -> list[dict]:
@@ -68,9 +71,18 @@ def installed_apps() -> list[dict]:
     return _apps[1]
 
 
-def match_app(name: str, apps: list[dict]) -> dict | None:
-    q = ALIASES.get(name.lower().strip(), name.lower().strip())
-    for test in (lambda n: n == q, lambda n: n.startswith(q), lambda n: q in n, lambda n: all(w in n for w in q.split())):
+def match_app(name: str, apps: list[dict], strict: bool = False) -> dict | None:
+    """The installed app meant by `name`. strict: only a clear match (same name ignoring case, spaces and
+    punctuation, or the start of the name), for when a wrong guess would open the wrong thing unasked."""
+    q = name.lower().strip(" .!?,")
+    q = ALIASES.get(q, q)
+    compact = lambda s: re.sub(r"[^a-z0-9]", "", s)  # noqa: E731  "Whats App" = "WhatsApp"
+    tests = [lambda n: n == q, lambda n: compact(n) == compact(q), lambda n: n.startswith(q)]
+    if not strict:
+        tests += [lambda n: q in n, lambda n: all(w in n for w in q.split())]
+    if len(compact(q)) < (3 if strict else 1):
+        return None
+    for test in tests:
         hits = sorted((a for a in apps if test(a["Name"].lower())), key=lambda a: len(a["Name"]))
         if hits:
             return hits[0]

@@ -15,7 +15,8 @@ speech and wake word all run on your own machine: no cloud AI, no API keys.
 - **News**: "latest Indian news", "AI news this week", "anything about Dubai today". Google News headlines
   by country, topic and time range, summarized with sources.
 - **PC control**: open apps and websites, find files, open and summarize documents (PDF, Word, text),
-  tidy a folder, move files, set reminders.
+  tidy a folder, move files, set reminders. "Open Spotify" / "launch WhatsApp" opens an installed app
+  instantly, without going through the language model.
 - **Approval before anything consequential**: moving files, running a command or pressing a button on a website shows
   the exact effect and waits for Approve or Deny (or a spoken yes or no). Destructive commands are refused
   outright. Every tool call is recorded in an audit log.
@@ -103,11 +104,10 @@ Lower `JARVIS_WAKE_THRESHOLD` (default `0.5`) if it is regularly just under.
 | Gmail: read and summarize mail | Done |
 | 4. Agent and memory | Done |
 | 5. Integrations: calendar, GitHub | Done |
-| 6. Phone access | Planned |
 | 7. Repeating reminders, daily briefing, tray and background mode | Done |
 | 7. Wake word while the window is closed | Done |
 | 7. Briefing while the window is closed, website monitoring | Done |
-| 8. Polish: phone layout, long conversations, search fallbacks, news | Done |
+| 8. Polish: long conversations, search fallbacks, news, instant app opening | Done |
 
 ## Layout
 
